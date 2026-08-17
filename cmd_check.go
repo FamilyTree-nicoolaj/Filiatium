@@ -26,7 +26,7 @@ Options :
   --categorie <nom>   n'exécuter que cette catégorie : structure, liens, doublons, realisme
   --json              sortie JSON plutôt que texte
 
-Règles :`
+%d règles :`
 
 const aideCheckPied = `
 Exemples :
@@ -37,11 +37,13 @@ Exemples :
   filiatium check family.ged --json
 `
 
-// afficherAideCheck imprime l'aide complète de `check`, avec le tableau des règles
-// généré en itérant rules.Registre plutôt que recopié en dur — il ne peut donc
-// jamais diverger si une règle est ajoutée, renommée ou déplacée de catégorie.
+// afficherAideCheck imprime l'aide complète de `check`, avec le compte et le
+// tableau des règles générés en itérant rules.Registre — jamais un nombre écrit en
+// dur, qui divergerait silencieusement si une règle est ajoutée ou retirée (c'est
+// exactement l'erreur que la construction de --ia a révélée : "19 règles" recopié
+// partout alors que le registre en comptait 28).
 func afficherAideCheck() {
-	fmt.Println(strings.TrimSpace(aideCheckEntete))
+	fmt.Printf(strings.TrimSpace(aideCheckEntete)+"\n", len(rules.Registre))
 	categorieCourante := ""
 	for _, r := range rules.Registre {
 		if r.Categorie != categorieCourante {

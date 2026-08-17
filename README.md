@@ -42,7 +42,8 @@ filiatium check family.ged --avant family.ged.bak-2026-08-04
 filiatium check family.ged --json
 ```
 
-28 règles, groupées en 4 catégories :
+Toutes les règles du registre, groupées en 4 catégories (le compte exact et à
+jour : `filiatium check help` ou `filiatium --ia`) :
 
 | Règles | Catégorie | Contrôle |
 |---|---|---|
@@ -152,8 +153,8 @@ filiatium --ia
 Affiche, en JSON sur stdout, un manifeste complet de l'outil : chaque commande
 avec ses arguments positionnels, toutes ses options (nom, type, valeur par
 défaut, description — dérivées par introspection des vraies définitions de
-drapeaux, jamais recopiées à la main), le registre des 28 règles de `check`,
-les codes de sortie et quelques conseils d'usage. De quoi découvrir toute la
+drapeaux, jamais recopiées à la main), le registre complet des règles de
+`check`, les codes de sortie et quelques conseils d'usage. De quoi découvrir toute la
 surface pilotable de l'outil sans parser la sortie texte de `--help`.
 
 Toutes les commandes acceptent aussi `--json` (sortie structurée sur stdout,

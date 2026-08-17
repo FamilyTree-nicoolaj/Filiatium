@@ -9,7 +9,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionna
 
 - Aide complète par sous-commande : `filiatium <commande> help` (ainsi que
   `--help`/`-h`) affiche désormais description, toutes les options et des
-  exemples — pour `check`, en plus le tableau des 28 règles, généré depuis
+  exemples — pour `check`, en plus le tableau complet des règles, généré depuis
   `rules.Registre` (jamais recopié en dur, ne peut donc pas diverger).
   Nécessaire pour un binaire distribué seul (releases GitHub), sans dépôt ni
   README à côté : il doit pouvoir se documenter entièrement lui-même.
@@ -36,7 +36,7 @@ fonctionnalités que l'ancien outillage n'avait pas.
 - **`gedcom`** — bibliothèque de lecture/retouche GEDCOM 5.5.1 ligne par ligne
   (remplace `gedcom.py`) : round-trip octet-pour-octet, garde de concurrence
   (SHA-256) à l'écriture, préservation BOM/CRLF.
-- **`check`** — 28 règles : S1–S5 (structure, port de `valider.py`), L1–L6 (liens
+- **`check`** — S1–S5 (structure, port de `valider.py`), L1–L6 (liens
   FAMC/FAMS, port de `controle_liens.py`), D1–D4 (doublons structurels, port de
   `controle_doublons.py`), R1–R6 (réalisme, port de `controle.py`) et **R7–R13**
   (réalisme étendu, nouveau : âge des parents, germains rapprochés, mariage après
