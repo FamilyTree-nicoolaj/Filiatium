@@ -3,7 +3,7 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
-## [Non publié]
+## [1.1.0] — 2026-08-17
 
 ### Ajouté
 
@@ -23,6 +23,17 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionna
   enregistrement de drapeaux dans une fonction `flagsXxx` réutilisée à la fois
   pour l'exécution et pour le manifeste) — jamais recopiées à la main, donc
   jamais susceptibles de diverger des options qui existent vraiment.
+- `--ia` décrit aussi, pour `add`, le format JSON accepté par `--fichier`
+  (`fichier_json`) : description, forme (un objet pour un individu, un tableau
+  pour en ajouter plusieurs d'un coup) et la liste des champs, énumérée par
+  réflexion sur `add.Requete` — seule la prose de chaque description reste
+  écrite à la main.
+
+### Modifié
+
+- Plus aucun nombre de règles écrit en dur (l'ancien texte disait « 19 »,
+  la vraie valeur est 28) : README et `filiatium check help` l'affichent
+  désormais via `len(rules.Registre)`, la même source que `--ia`.
 
 ## [1.0.0] — 2026-08-17
 
