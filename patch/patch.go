@@ -86,6 +86,12 @@ type Operation struct {
 
 	// add_record : un enregistrement entier déjà mis en forme, lignes[0] = "0 @X@ TAG"
 	// (utilisé par le plan de fusion produit par `merge --analyse`)
+	//
+	// add_lines : lignes à insérer telles quelles dans un enregistrement EXISTANT
+	// (xref), juste avant son "1 CHAN" — pour ajouter un fait qu'il n'avait pas du
+	// tout (ex. ["1 BIRT", "2 DATE 12 MAR 1805"] sur un individu sans naissance
+	// connue). Ni lignes[0] == "0 ..." (ce serait un nouvel enregistrement, voir
+	// add_record) ni un remplacement d'une ligne déjà présente (voir set_line).
 	Lignes []string `json:"lignes,omitempty"`
 }
 
@@ -129,6 +135,17 @@ func (o Operation) Appliquer(g *gedcom.Gedcom) error {
 		return nil
 	case "add_famc":
 		rec.AddFamc(o.Fam)
+		return nil
+	case "add_lines":
+		if len(o.Lignes) == 0 {
+			return fmt.Errorf("%s : add_lines sans lignes", o.Xref)
+		}
+		for _, l := range o.Lignes {
+			if strings.HasPrefix(l, "0 ") {
+				return fmt.Errorf("%s : add_lines ne crée pas de nouvel enregistrement, utiliser add_record", o.Xref)
+			}
+		}
+		rec.AjouterLignes(o.Lignes)
 		return nil
 	case "set_line":
 		if !rec.RemplacerLigne(o.Ligne, o.NouvelleLigne) {

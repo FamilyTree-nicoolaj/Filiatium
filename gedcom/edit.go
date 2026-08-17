@@ -143,6 +143,21 @@ func (r *Record) AjouterLigne(ligne string) {
 	r.Lignes = inserer(r.Lignes, r.indexChan(), ligne)
 }
 
+// AjouterLignes insère plusieurs lignes, dans l'ordre donné, juste avant "1 CHAN"
+// (ou en fin d'enregistrement) — répète AjouterLigne ligne par ligne, ce qui bâtit
+// correctement un bloc hiérarchique (ex. "1 BIRT" puis "2 DATE ...") : chaque
+// insertion se fait juste avant CHAN, donc juste après la ligne insérée avant elle.
+//
+// Sert à ajouter un fait qu'une fiche n'avait pas du tout (BIRT, OCCU, NOTE...),
+// ce qu'aucune autre primitive ne couvre : SetEventDate exige que l'événement
+// existe déjà, AddCitation/AddFams/AddFamc sont pour des pointeurs qui ne doivent
+// apparaître qu'une fois.
+func (r *Record) AjouterLignes(lignes []string) {
+	for _, l := range lignes {
+		r.AjouterLigne(l)
+	}
+}
+
 // RemplacerLigne remplace la première occurrence d'une ligne EXACTE par une autre.
 // Renvoie false si non trouvée. Primitive générique pour `apply` (opération
 // "set_line") : les correctifs déclaratifs n'ont pas tous un helper dédié.

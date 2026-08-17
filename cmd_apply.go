@@ -27,9 +27,11 @@ Options :
   --json    sortie JSON plutôt que texte (pour un usage scripté/agent)
 
 Opérations disponibles dans "operations" : set_event_date, add_citation,
-add_fams, add_famc, add_source, add_individual, add_family, add_record
-(enregistrement entier, utilisé par "merge --plan"), set_line, remove_line,
-touch_chan.
+add_fams, add_famc, add_lines (lignes neuves dans une fiche EXISTANTE — ex.
+ajouter un BIRT/OCCU/NOTE à quelqu'un qui n'en avait pas ; ni "0 ..." — voir
+add_record — ni remplacement d'une ligne déjà là — voir set_line), add_source,
+add_individual, add_family, add_record (enregistrement entier, utilisé par
+"merge --plan"), set_line, remove_line, touch_chan.
 
 Exemple de correctif :
   {
@@ -41,6 +43,9 @@ Exemple de correctif :
       {"op": "add_citation", "xref": "F0111", "source": "S0008", "evenement": "MARR"}
     ]
   }
+
+Exemple add_lines (ajouter une naissance à quelqu'un qui n'en avait pas) :
+  {"op": "add_lines", "xref": "I0042", "lignes": ["1 BIRT", "2 DATE 12 MAR 1805"]}
 
 Exemples :
   filiatium apply correctif.json

@@ -32,6 +32,44 @@ func TestSetEventDate(t *testing.T) {
 	}
 }
 
+func TestAjouterLignes(t *testing.T) {
+	// Cas motivant : "beaucoup de patchs ajoutent un BIRT/OCCU/NOTE à quelqu'un
+	// qui n'en avait pas" — aucune autre primitive ne couvre l'ajout d'un fait
+	// totalement absent (SetEventDate exige que le bloc "1 TAG" existe déjà).
+	sansFaits := nouveauRecord([]string{"0 @I0099@ INDI", "1 NAME Alice /Test/", "1 CHAN"})
+	if sansFaits.Date("BIRT") != "" {
+		t.Fatal("précondition du test invalide")
+	}
+
+	sansFaits.AjouterLignes([]string{"1 BIRT", "2 DATE 3 MAR 1830", "1 OCCU Charpentier"})
+
+	if got := sansFaits.Date("BIRT"); got != "3 MAR 1830" {
+		t.Errorf("BIRT.DATE = %q", got)
+	}
+	if got := sansFaits.Valeur("OCCU"); got != "Charpentier" {
+		t.Errorf("OCCU = %q", got)
+	}
+	// Les trois lignes doivent apparaître dans l'ordre donné, juste avant CHAN —
+	// pas dispersées, pas après CHAN.
+	idxBirt, idxDate, idxOccu, idxChan := -1, -1, -1, -1
+	for i, l := range sansFaits.Lignes {
+		switch l {
+		case "1 BIRT":
+			idxBirt = i
+		case "2 DATE 3 MAR 1830":
+			idxDate = i
+		case "1 OCCU Charpentier":
+			idxOccu = i
+		case "1 CHAN":
+			idxChan = i
+		}
+	}
+	if !(idxBirt >= 0 && idxBirt+1 == idxDate && idxDate+1 == idxOccu && idxOccu+1 == idxChan) {
+		t.Errorf("ordre inattendu : BIRT=%d DATE=%d OCCU=%d CHAN=%d\n%v",
+			idxBirt, idxDate, idxOccu, idxChan, sansFaits.Lignes)
+	}
+}
+
 func TestAddCitation(t *testing.T) {
 	g := chargerMini(t)
 	jean, _ := g.Get("I0001")

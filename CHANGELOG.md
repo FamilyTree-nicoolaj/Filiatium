@@ -3,6 +3,18 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Ajouté
+
+- `apply` : nouvelle opération `add_lines`, pour insérer des lignes neuves dans
+  une fiche **existante** — le cas qui manquait entre « créer un enregistrement
+  entier » (`add_record`) et « remplacer/supprimer une ligne déjà présente »
+  (`set_line`/`remove_line`). Sert notamment à ajouter un `BIRT`/`OCCU`/`NOTE` à
+  quelqu'un qui n'en avait pas du tout, cas fréquent dans le flux de correctifs.
+  Réutilise `Record.AjouterLigne`, déjà exposée côté bibliothèque mais jamais
+  branchée sur `apply` jusqu'ici.
+
 ## [1.1.0] — 2026-08-17
 
 ### Ajouté

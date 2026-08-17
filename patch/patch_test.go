@@ -67,6 +67,37 @@ func TestOperationSetEventDateEtCitation(t *testing.T) {
 	}
 }
 
+func TestOperationAddLines(t *testing.T) {
+	// Cas motivant : ajouter un BIRT (avec sa DATE) à un individu qui n'en a pas.
+	g := charger(t, entete+
+		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 CHAN\n2 DATE 1 JAN 2020\n"+pied)
+
+	c := &Correctif{
+		Operations: []Operation{
+			{Op: "add_lines", Xref: "I0001", Lignes: []string{"1 BIRT", "2 DATE 12 MAR 1805"}},
+		},
+	}
+	if err := c.Appliquer(g); err != nil {
+		t.Fatal(err)
+	}
+	i1, _ := g.Get("I0001")
+	if got := i1.Date("BIRT"); got != "12 MAR 1805" {
+		t.Errorf("BIRT.DATE = %q", got)
+	}
+
+	// add_lines ne crée pas de nouvel enregistrement : une ligne "0 ..." doit être
+	// refusée (c'est le rôle de add_record).
+	err := (Operation{Op: "add_lines", Xref: "I0001", Lignes: []string{"0 @I0002@ INDI"}}).Appliquer(g)
+	if err == nil {
+		t.Error("add_lines aurait dû refuser une ligne \"0 ...\"")
+	}
+
+	// Sans lignes, refus explicite plutôt qu'un no-op silencieux.
+	if err := (Operation{Op: "add_lines", Xref: "I0001", Lignes: nil}).Appliquer(g); err == nil {
+		t.Error("add_lines sans lignes aurait dû être refusé")
+	}
+}
+
 func TestOperationSetLineEtRemoveLine(t *testing.T) {
 	g := charger(t, entete+
 		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 NOTE à corriger\n"+pied)

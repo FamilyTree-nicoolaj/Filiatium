@@ -122,9 +122,19 @@ filiatium apply correctif.json --write
 
 `cible` est résolu relativement au dossier du fichier de correctif, pas au
 répertoire courant. Opérations disponibles : `set_event_date`, `add_citation`,
-`add_fams`, `add_famc`, `add_source`, `add_individual`, `add_family`, `add_record`
-(enregistrement entier, utilisé par `merge`), `set_line`, `remove_line`,
-`touch_chan`.
+`add_fams`, `add_famc`, `add_lines`, `add_source`, `add_individual`, `add_family`,
+`add_record` (enregistrement entier, utilisé par `merge`), `set_line`,
+`remove_line`, `touch_chan`.
+
+`add_lines` insère des lignes neuves dans une fiche **déjà existante**, juste
+avant son `1 CHAN` — le cas qui manquait entre « créer un enregistrement entier »
+(`add_record`) et « remplacer/supprimer une ligne déjà présente »
+(`set_line`/`remove_line`) : ajouter un `BIRT`/`OCCU`/`NOTE` à quelqu'un qui n'en
+avait pas du tout.
+
+```json
+{"op": "add_lines", "xref": "I0042", "lignes": ["1 BIRT", "2 DATE 12 MAR 1805"]}
+```
 
 ### `merge --analyse` — deux GEDCOM sont-ils fusionnables ?
 
