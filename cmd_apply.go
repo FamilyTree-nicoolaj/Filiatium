@@ -13,15 +13,53 @@ import (
 	"github.com/FamilyTree-nicoolaj/filiatium/rules"
 )
 
+const aideApply = `
+filiatium apply <correctif.json> [options]
+
+Applique un correctif déclaratif JSON : vérifie d'abord toutes les
+préconditions (auto-invalidantes — un correctif déjà appliqué refuse de se
+rejouer), puis exécute les opérations dans l'ordre. Le champ "cible" du
+correctif est résolu relativement au dossier du fichier de correctif, pas au
+répertoire courant.
+
+Options :
+  --write   écrire le résultat (sinon simulation)
+  --json    sortie JSON plutôt que texte (pour un usage scripté/agent)
+
+Opérations disponibles dans "operations" : set_event_date, add_citation,
+add_fams, add_famc, add_source, add_individual, add_family, add_record
+(enregistrement entier, utilisé par "merge --plan"), set_line, remove_line,
+touch_chan.
+
+Exemple de correctif :
+  {
+    "cible": "family.ged",
+    "justification": "Acte de mariage AD Tarn 5E123 vue 42",
+    "preconditions": [{"xref": "F0111", "evenement": "MARR", "date_vaut": "5 JUN 1674"}],
+    "operations": [
+      {"op": "set_event_date", "xref": "F0111", "evenement": "MARR", "valeur": "27 MAY 1700"},
+      {"op": "add_citation", "xref": "F0111", "source": "S0008", "evenement": "MARR"}
+    ]
+  }
+
+Exemples :
+  filiatium apply correctif.json
+  filiatium apply correctif.json --write
+`
+
 func init() {
 	commandes = append(commandes, Commande{
-		Nom:         "apply",
-		Description: "Appliquer un correctif déclaratif JSON (préconditions + opérations)",
-		Executer:    cmdApply,
+		Nom:           "apply",
+		Description:   "Appliquer un correctif déclaratif JSON (préconditions + opérations)",
+		AideDetaillee: aideApply,
+		Executer:      cmdApply,
 	})
 }
 
 func cmdApply(argv []string) int {
+	if aideSiDemandee("apply", argv) {
+		return 0
+	}
 	fs := flag.NewFlagSet("apply", flag.ExitOnError)
 	ecrire := fs.Bool("write", false, "écrire le résultat (sinon simulation)")
 	sortieJSON := fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)")

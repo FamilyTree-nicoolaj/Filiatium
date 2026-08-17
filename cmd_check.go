@@ -13,6 +13,46 @@ import (
 	"github.com/FamilyTree-nicoolaj/filiatium/rules"
 )
 
+const aideCheckEntete = `
+filiatium check <fichier.ged> [options]
+
+Vérifie un GEDCOM sous le registre de règles complet (structure, liens,
+doublons, réalisme). Code de sortie : 0 si rien à signaler, 1 sinon.
+
+Options :
+  --avant <ref>      comparer les comptes par type et les xref ajoutés/supprimés
+                      avec cette version de référence du même fichier
+  --regle L1,L2,...   n'exécuter que ces règles (identifiants ci-dessous)
+  --categorie <nom>   n'exécuter que cette catégorie : structure, liens, doublons, realisme
+  --json              sortie JSON plutôt que texte
+
+Règles :`
+
+const aideCheckPied = `
+Exemples :
+  filiatium check family.ged
+  filiatium check family.ged --categorie realisme
+  filiatium check family.ged --regle L1,L2,D1
+  filiatium check family.ged --avant family.ged.bak-2026-08-04
+  filiatium check family.ged --json
+`
+
+// afficherAideCheck imprime l'aide complète de `check`, avec le tableau des règles
+// généré en itérant rules.Registre plutôt que recopié en dur — il ne peut donc
+// jamais diverger si une règle est ajoutée, renommée ou déplacée de catégorie.
+func afficherAideCheck() {
+	fmt.Println(strings.TrimSpace(aideCheckEntete))
+	categorieCourante := ""
+	for _, r := range rules.Registre {
+		if r.Categorie != categorieCourante {
+			categorieCourante = r.Categorie
+			fmt.Printf("  %s\n", strings.ToUpper(categorieCourante))
+		}
+		fmt.Printf("    %-4s %s\n", r.ID, r.Titre)
+	}
+	fmt.Println(strings.TrimSpace(aideCheckPied))
+}
+
 func init() {
 	commandes = append(commandes, Commande{
 		Nom:         "check",
@@ -22,6 +62,12 @@ func init() {
 }
 
 func cmdCheck(argv []string) int {
+	for _, a := range argv {
+		if a == "help" || a == "-h" || a == "--help" {
+			afficherAideCheck()
+			return 0
+		}
+	}
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	avant := fs.String("avant", "", "comparer les comptes par type avec cette version de référence")
 	regleFlag := fs.String("regle", "", "règles à exécuter, séparées par des virgules (ex. L1,L2)")

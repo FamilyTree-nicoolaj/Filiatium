@@ -16,6 +16,7 @@ var version = "dev"
 // ne puissent jamais diverger. Chaque cmd_*.go s'y ajoute via son propre init().
 type Commande struct {
 	Nom, Description string
+	AideDetaillee    string // affiché par `filiatium <commande> help` / --help / -h
 	Executer         func(argv []string) int
 }
 
@@ -91,6 +92,8 @@ func afficherAbout() {
 	fmt.Println("Auteur  : Nicolas Jalibert")
 	fmt.Println("Licence : MIT")
 	fmt.Println("Source  : https://github.com/FamilyTree-nicoolaj/filiatium")
+	fmt.Println()
+	fmt.Println("filiatium <commande> help : aide complète de cette commande (options, exemples)")
 }
 
 func afficherAide() {
@@ -106,4 +109,30 @@ func afficherAide() {
 	fmt.Println("sans commande : mode guidé (menu interactif)")
 	fmt.Println()
 	fmt.Println("options : --version, --about, --help")
+	fmt.Println("filiatium <commande> help : aide complète de cette commande (options, exemples)")
+}
+
+// aideSiDemandee affiche l'aide complète de la commande `nom` et renvoie true si
+// l'utilisateur l'a demandée ("help", -h ou --help n'importe où dans argv) — à
+// appeler en tout début de chaque cmdXxx, avant flag.Parse, pour qu'un tel argv ne
+// soit jamais traité comme un chemin de fichier positionnel. Le binaire distribué
+// seul (sans dépôt ni README à côté) doit pouvoir se documenter lui-même.
+func aideSiDemandee(nom string, argv []string) bool {
+	demandee := false
+	for _, a := range argv {
+		if a == "help" || a == "-h" || a == "--help" {
+			demandee = true
+			break
+		}
+	}
+	if !demandee {
+		return false
+	}
+	for _, c := range commandes {
+		if c.Nom == nom {
+			fmt.Println(strings.TrimSpace(c.AideDetaillee))
+			return true
+		}
+	}
+	return true
 }

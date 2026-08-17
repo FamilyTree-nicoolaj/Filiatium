@@ -14,15 +14,51 @@ import (
 	"github.com/FamilyTree-nicoolaj/filiatium/rules"
 )
 
+const aideAdd = `
+filiatium add <fichier.ged> [options]
+
+Ajoute un individu en câblant systématiquement les deux sens de chaque lien de
+parenté (FAM.CHIL + INDI.FAMC ; FAM.HUSB/WIFE + INDI.FAMS), y compris côté
+parent quand une nouvelle famille est créée. Recherche d'homonyme avant
+création (refuse par défaut si un candidat existe). Rejoue tout le registre de
+règles avant d'écrire ; refuse si l'ajout introduit un signalement nouveau.
+
+Options :
+  --nom "Prénom /Patronyme/"   nom complet au format GEDCOM, ex. "Jean /Dupret/"
+  --sexe M|F                   M, F, ou vide si inconnu
+  --naiss "12 MAR 1805"        date de naissance GEDCOM
+  --deces "..."                date de décès GEDCOM
+  --pere <xref>                xref du père
+  --mere <xref>                xref de la mère
+  --conjoint <xref>            xref du conjoint
+  --note "..."                 justification, ajoutée en 1 NOTE
+  --fichier lot.json           fichier JSON décrivant un ou plusieurs ajouts en lot
+  --force                      ajouter même si un homonyme potentiel existe
+  --write                      écrire le résultat (sinon simulation)
+  --json                       sortie JSON plutôt que texte (pour un usage scripté/agent)
+
+Sans --nom ni --fichier, et si l'entrée standard est un terminal, lance un
+assistant interactif qui pose les mêmes questions une à une.
+
+Exemples :
+  filiatium add family.ged --nom "Jean /Dupret/" --sexe M --naiss "12 MAR 1805" \
+    --pere I0123 --mere I0124 --conjoint I0200 --write
+  filiatium add family.ged --fichier lot.json --write
+`
+
 func init() {
 	commandes = append(commandes, Commande{
-		Nom:         "add",
-		Description: "Ajouter un individu en câblant tous ses liens de parenté (--nom, --fichier, ou assistant)",
-		Executer:    cmdAdd,
+		Nom:           "add",
+		Description:   "Ajouter un individu en câblant tous ses liens de parenté (--nom, --fichier, ou assistant)",
+		AideDetaillee: aideAdd,
+		Executer:      cmdAdd,
 	})
 }
 
 func cmdAdd(argv []string) int {
+	if aideSiDemandee("add", argv) {
+		return 0
+	}
 	fs := flag.NewFlagSet("add", flag.ExitOnError)
 	nomF := fs.String("nom", "", `nom complet au format GEDCOM, ex. "Jean /Dupret/"`)
 	sexeF := fs.String("sexe", "", "M, F, ou vide si inconnu")

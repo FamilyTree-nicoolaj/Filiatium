@@ -3,6 +3,19 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Ajouté
+
+- Aide complète par sous-commande : `filiatium <commande> help` (ainsi que
+  `--help`/`-h`) affiche désormais description, toutes les options et des
+  exemples — pour `check`, en plus le tableau des 19 règles, généré depuis
+  `rules.Registre` (jamais recopié en dur, ne peut donc pas diverger).
+  Nécessaire pour un binaire distribué seul (releases GitHub), sans dépôt ni
+  README à côté : il doit pouvoir se documenter entièrement lui-même.
+  `filiatium help` (sans sous-commande) reste le résumé succinct existant.
+- `filiatium --about` et `filiatium help` rappellent désormais ce point d'entrée.
+
 ## [1.0.0] — 2026-08-17
 
 Première version : portage complet et vérifié des quatre scripts Python de

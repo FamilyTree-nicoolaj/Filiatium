@@ -10,15 +10,46 @@ import (
 	"github.com/FamilyTree-nicoolaj/filiatium/merge"
 )
 
+const aideMerge = `
+filiatium merge --analyse <base.ged> <apport.ged> [options]
+
+Analyse si deux GEDCOM sont fusionnables — n'écrit jamais de GEDCOM lui-même.
+Produit un rapport : collisions de xref, appariements d'individus classés
+certaine/probable/à examiner (avec les critères qui ont joué et les conflits de
+faits éventuels), et contradictions qu'introduirait une fusion mécanique
+(rejoue le registre de règles sur une concaténation renumérotée). Avec --plan,
+écrit en plus un plan de fusion déclaratif exécutable via "filiatium apply".
+
+--analyse est obligatoire : c'est le seul mode disponible pour l'instant.
+
+Options :
+  --analyse         obligatoire — analyser la fusion
+  --plan <fichier>  écrire le plan de fusion déclaratif (JSON, pour apply) dans ce fichier
+  --prefixe <p>     préfixe de renumérotation proposé pour l'apport (défaut : B)
+  --json            rapport en JSON plutôt qu'en texte
+
+Le plan ne fusionne aucune fiche identifiée comme doublon automatiquement :
+c'est un jugement humain, à faire à la lecture des appariements "certaine".
+
+Exemples :
+  filiatium merge --analyse family.ged secondary_trees/sicard-binas-1779.ged
+  filiatium merge --analyse base.ged apport.ged --plan fusion.json --prefixe B
+  filiatium apply fusion.json --write   # après relecture du rapport
+`
+
 func init() {
 	commandes = append(commandes, Commande{
-		Nom:         "merge",
-		Description: "Analyser si deux GEDCOM sont fusionnables (--analyse <base.ged> <apport.ged>)",
-		Executer:    cmdMerge,
+		Nom:           "merge",
+		Description:   "Analyser si deux GEDCOM sont fusionnables (--analyse <base.ged> <apport.ged>)",
+		AideDetaillee: aideMerge,
+		Executer:      cmdMerge,
 	})
 }
 
 func cmdMerge(argv []string) int {
+	if aideSiDemandee("merge", argv) {
+		return 0
+	}
 	fs := flag.NewFlagSet("merge", flag.ExitOnError)
 	analyse := fs.Bool("analyse", false, "analyser la fusion (seul mode disponible : merge n'écrit jamais de GEDCOM)")
 	sortiePlan := fs.String("plan", "", "écrire le plan de fusion déclaratif (JSON, pour `apply`) dans ce fichier")

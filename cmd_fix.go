@@ -15,15 +15,41 @@ import (
 	"github.com/FamilyTree-nicoolaj/filiatium/rules"
 )
 
+const aideFix = `
+filiatium fix <fichier.ged> [options]
+
+Corrige ce qui est mécaniquement sûr : lien réciproque manquant (L1/L2),
+pointeur dupliqué (D3/D4), ligne de plus de 255 caractères repliée en CONC (S3).
+Rien d'autre n'est jamais corrigé automatiquement — voir "filiatium check help"
+pour le détail de chaque règle.
+
+Options :
+  --write         appliquer les corrections retenues (sinon simulation)
+  --interactif    confirmer chaque correction individuellement
+  --json          sortie JSON plutôt que texte (pour un usage scripté/agent)
+
+Après --write, tout le registre de règles est rejoué automatiquement ;
+l'écriture est annulée si une correction introduit un signalement nouveau.
+
+Exemples :
+  filiatium fix family.ged
+  filiatium fix family.ged --write
+  filiatium fix family.ged --interactif
+`
+
 func init() {
 	commandes = append(commandes, Commande{
-		Nom:         "fix",
-		Description: "Corriger ce qui est mécaniquement sûr (liens réciproques, doublons, lignes longues)",
-		Executer:    cmdFix,
+		Nom:           "fix",
+		Description:   "Corriger ce qui est mécaniquement sûr (liens réciproques, doublons, lignes longues)",
+		AideDetaillee: aideFix,
+		Executer:      cmdFix,
 	})
 }
 
 func cmdFix(argv []string) int {
+	if aideSiDemandee("fix", argv) {
+		return 0
+	}
 	fs := flag.NewFlagSet("fix", flag.ExitOnError)
 	ecrire := fs.Bool("write", false, "appliquer les corrections retenues (sinon simulation)")
 	interactifF := fs.Bool("interactif", false, "confirmer chaque correction individuellement")
