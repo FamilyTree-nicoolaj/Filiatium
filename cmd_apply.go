@@ -56,13 +56,20 @@ func init() {
 	})
 }
 
+// flagsApply enregistre les options de `apply` sur fs — voir flagsCheck
+// (cmd_check.go) pour pourquoi ceci est factorisé à part.
+func flagsApply(fs *flag.FlagSet) (ecrire, sortieJSON *bool) {
+	ecrire = fs.Bool("write", false, "écrire le résultat (sinon simulation)")
+	sortieJSON = fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)")
+	return
+}
+
 func cmdApply(argv []string) int {
 	if aideSiDemandee("apply", argv) {
 		return 0
 	}
 	fs := flag.NewFlagSet("apply", flag.ExitOnError)
-	ecrire := fs.Bool("write", false, "écrire le résultat (sinon simulation)")
-	sortieJSON := fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)")
+	ecrire, sortieJSON := flagsApply(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if fs.NArg() < 1 {

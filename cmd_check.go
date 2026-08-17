@@ -61,6 +61,18 @@ func init() {
 	})
 }
 
+// flagsCheck enregistre les options de `check` sur fs et renvoie leurs valeurs.
+// Factorisé à part de cmdCheck pour que le manifeste --ia (cmd_ia.go) puisse
+// introspecter exactement les mêmes options par réflexion (fs.VisitAll), sans
+// jamais les recopier à la main dans une structure séparée qui divergerait.
+func flagsCheck(fs *flag.FlagSet) (avant, regleFlag, categorie *string, sortieJSON *bool) {
+	avant = fs.String("avant", "", "comparer les comptes par type avec cette version de référence")
+	regleFlag = fs.String("regle", "", "règles à exécuter, séparées par des virgules (ex. L1,L2)")
+	categorie = fs.String("categorie", "", "catégorie à exécuter (structure, liens, doublons, realisme)")
+	sortieJSON = fs.Bool("json", false, "sortie JSON plutôt que texte")
+	return
+}
+
 func cmdCheck(argv []string) int {
 	for _, a := range argv {
 		if a == "help" || a == "-h" || a == "--help" {
@@ -69,10 +81,7 @@ func cmdCheck(argv []string) int {
 		}
 	}
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	avant := fs.String("avant", "", "comparer les comptes par type avec cette version de référence")
-	regleFlag := fs.String("regle", "", "règles à exécuter, séparées par des virgules (ex. L1,L2)")
-	categorie := fs.String("categorie", "", "catégorie à exécuter (structure, liens, doublons, realisme)")
-	sortieJSON := fs.Bool("json", false, "sortie JSON plutôt que texte")
+	avant, regleFlag, categorie, sortieJSON := flagsCheck(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if fs.NArg() < 1 {

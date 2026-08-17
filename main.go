@@ -40,6 +40,9 @@ func executer(argv []string) int {
 	case "--about":
 		afficherAbout()
 		return 0
+	case "--ia":
+		afficherManifesteIA()
+		return 0
 	}
 	for _, c := range commandes {
 		if c.Nom == argv[0] {
@@ -108,7 +111,7 @@ func afficherAide() {
 	fmt.Println()
 	fmt.Println("sans commande : mode guidé (menu interactif)")
 	fmt.Println()
-	fmt.Println("options : --version, --about, --help")
+	fmt.Println("options : --version, --about, --help, --ia (manifeste JSON pour un agent)")
 	fmt.Println("filiatium <commande> help : aide complète de cette commande (options, exemples)")
 }
 

@@ -55,23 +55,38 @@ func init() {
 	})
 }
 
+// drapeauxAdd regroupe les options de `add` — une struct plutôt que 12 valeurs de
+// retour nommées, plus lisible vu leur nombre. Voir flagsCheck (cmd_check.go) pour
+// pourquoi cet enregistrement est factorisé à part (réutilisé par le manifeste --ia).
+type drapeauxAdd struct {
+	nom, sexe, naiss, deces, pere, mere, conjoint, note, fichier *string
+	force, ecrire, sortieJSON                                    *bool
+}
+
+func flagsAdd(fs *flag.FlagSet) drapeauxAdd {
+	return drapeauxAdd{
+		nom:      fs.String("nom", "", `nom complet au format GEDCOM, ex. "Jean /Dupret/"`),
+		sexe:     fs.String("sexe", "", "M, F, ou vide si inconnu"),
+		naiss:    fs.String("naiss", "", `date de naissance GEDCOM, ex. "12 MAR 1805"`),
+		deces:    fs.String("deces", "", "date de décès GEDCOM"),
+		pere:     fs.String("pere", "", "xref du père"),
+		mere:     fs.String("mere", "", "xref de la mère"),
+		conjoint: fs.String("conjoint", "", "xref du conjoint"),
+		note:     fs.String("note", "", "justification, ajoutée en 1 NOTE"),
+		fichier:  fs.String("fichier", "", "fichier JSON décrivant un ou plusieurs ajouts en lot"),
+
+		force:      fs.Bool("force", false, "ajouter même si un homonyme potentiel existe"),
+		ecrire:     fs.Bool("write", false, "écrire le résultat (sinon simulation)"),
+		sortieJSON: fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)"),
+	}
+}
+
 func cmdAdd(argv []string) int {
 	if aideSiDemandee("add", argv) {
 		return 0
 	}
 	fs := flag.NewFlagSet("add", flag.ExitOnError)
-	nomF := fs.String("nom", "", `nom complet au format GEDCOM, ex. "Jean /Dupret/"`)
-	sexeF := fs.String("sexe", "", "M, F, ou vide si inconnu")
-	naissF := fs.String("naiss", "", `date de naissance GEDCOM, ex. "12 MAR 1805"`)
-	decesF := fs.String("deces", "", "date de décès GEDCOM")
-	pereF := fs.String("pere", "", "xref du père")
-	mereF := fs.String("mere", "", "xref de la mère")
-	conjointF := fs.String("conjoint", "", "xref du conjoint")
-	noteF := fs.String("note", "", "justification, ajoutée en 1 NOTE")
-	fichierF := fs.String("fichier", "", "fichier JSON décrivant un ou plusieurs ajouts en lot")
-	force := fs.Bool("force", false, "ajouter même si un homonyme potentiel existe")
-	ecrire := fs.Bool("write", false, "écrire le résultat (sinon simulation)")
-	sortieJSON := fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)")
+	fl := flagsAdd(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if fs.NArg() < 1 {
@@ -94,17 +109,17 @@ func cmdAdd(argv []string) int {
 
 	var requetes []add.Requete
 	switch {
-	case *fichierF != "":
-		requetes, err = chargerRequetesJSON(*fichierF)
+	case *fl.fichier != "":
+		requetes, err = chargerRequetesJSON(*fl.fichier)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "erreur :", err)
 			return 2
 		}
-	case *nomF != "":
+	case *fl.nom != "":
 		requetes = []add.Requete{{
-			Nom: *nomF, Sexe: *sexeF, Naissance: *naissF, Deces: *decesF,
-			Pere: *pereF, Mere: *mereF, Conjoint: *conjointF, Note: *noteF,
-			IgnorerHomonymes: *force,
+			Nom: *fl.nom, Sexe: *fl.sexe, Naissance: *fl.naiss, Deces: *fl.deces,
+			Pere: *fl.pere, Mere: *fl.mere, Conjoint: *fl.conjoint, Note: *fl.note,
+			IgnorerHomonymes: *fl.force,
 		}}
 	default:
 		if !terminalInteractif() {
@@ -115,7 +130,7 @@ func cmdAdd(argv []string) int {
 		if !ok {
 			return 2
 		}
-		req.IgnorerHomonymes = *force
+		req.IgnorerHomonymes = *fl.force
 		requetes = []add.Requete{req}
 	}
 
@@ -123,7 +138,7 @@ func cmdAdd(argv []string) int {
 	for _, req := range requetes {
 		res, err := add.Ajouter(g, req)
 		if err != nil {
-			if *sortieJSON {
+			if *fl.sortieJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.Encode(map[string]any{"erreur": err.Error()})
 			} else {
@@ -134,7 +149,7 @@ func cmdAdd(argv []string) int {
 		resultats = append(resultats, res)
 	}
 
-	if !*sortieJSON {
+	if !*fl.sortieJSON {
 		for _, res := range resultats {
 			fmt.Printf("%s :\n", res.Xref)
 			for _, l := range res.Diff {
@@ -146,8 +161,8 @@ func cmdAdd(argv []string) int {
 		}
 	}
 
-	if !*ecrire {
-		return finAdd(*sortieJSON, resultats, false, nil)
+	if !*fl.ecrire {
+		return finAdd(*fl.sortieJSON, resultats, false, nil)
 	}
 
 	// Auto-vérification : rejouer tout le registre sur le résultat en mémoire et
@@ -156,20 +171,20 @@ func cmdAdd(argv []string) int {
 	apres := executerRegles(g, rules.Registre, seuils)
 	nouveaux := signalementsNouveaux(avant, apres)
 	if len(nouveaux) > 0 {
-		if !*sortieJSON {
+		if !*fl.sortieJSON {
 			fmt.Fprintln(os.Stderr, "\n⚠ écriture annulée : cet ajout introduit de nouveaux signalements :")
 			for _, n := range nouveaux {
 				fmt.Fprintln(os.Stderr, "    "+n)
 			}
 		}
-		return finAdd(*sortieJSON, resultats, false, nouveaux)
+		return finAdd(*fl.sortieJSON, resultats, false, nouveaux)
 	}
 
 	if _, err := g.Save(""); err != nil {
 		fmt.Fprintln(os.Stderr, "erreur :", err)
 		return 2
 	}
-	return finAdd(*sortieJSON, resultats, true, nil)
+	return finAdd(*fl.sortieJSON, resultats, true, nil)
 }
 
 // finAdd centralise la sortie finale de `add`, texte ou JSON selon --json.

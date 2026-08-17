@@ -9,12 +9,20 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionna
 
 - Aide complète par sous-commande : `filiatium <commande> help` (ainsi que
   `--help`/`-h`) affiche désormais description, toutes les options et des
-  exemples — pour `check`, en plus le tableau des 19 règles, généré depuis
+  exemples — pour `check`, en plus le tableau des 28 règles, généré depuis
   `rules.Registre` (jamais recopié en dur, ne peut donc pas diverger).
   Nécessaire pour un binaire distribué seul (releases GitHub), sans dépôt ni
   README à côté : il doit pouvoir se documenter entièrement lui-même.
   `filiatium help` (sans sous-commande) reste le résumé succinct existant.
 - `filiatium --about` et `filiatium help` rappellent désormais ce point d'entrée.
+- `filiatium --ia` : manifeste JSON complet (commandes, options avec type/défaut/
+  description, positionnels, registre des règles, codes de sortie, conseils
+  d'usage), pour qu'un agent découvre toute la surface pilotable de l'outil sans
+  parser du texte destiné à un humain. Les options sont dérivées par
+  introspection des vrais `*flag.FlagSet` (chaque commande factorise son
+  enregistrement de drapeaux dans une fonction `flagsXxx` réutilisée à la fois
+  pour l'exécution et pour le manifeste) — jamais recopiées à la main, donc
+  jamais susceptibles de diverger des options qui existent vraiment.
 
 ## [1.0.0] — 2026-08-17
 
@@ -28,7 +36,7 @@ fonctionnalités que l'ancien outillage n'avait pas.
 - **`gedcom`** — bibliothèque de lecture/retouche GEDCOM 5.5.1 ligne par ligne
   (remplace `gedcom.py`) : round-trip octet-pour-octet, garde de concurrence
   (SHA-256) à l'écriture, préservation BOM/CRLF.
-- **`check`** — 19 règles : S1–S5 (structure, port de `valider.py`), L1–L6 (liens
+- **`check`** — 28 règles : S1–S5 (structure, port de `valider.py`), L1–L6 (liens
   FAMC/FAMS, port de `controle_liens.py`), D1–D4 (doublons structurels, port de
   `controle_doublons.py`), R1–R6 (réalisme, port de `controle.py`) et **R7–R13**
   (réalisme étendu, nouveau : âge des parents, germains rapprochés, mariage après

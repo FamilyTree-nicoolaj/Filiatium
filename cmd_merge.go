@@ -46,15 +46,22 @@ func init() {
 	})
 }
 
+// flagsMerge enregistre les options de `merge` sur fs — voir flagsCheck
+// (cmd_check.go) pour pourquoi ceci est factorisé à part.
+func flagsMerge(fs *flag.FlagSet) (analyse *bool, sortiePlan, prefixe *string, sortieJSON *bool) {
+	analyse = fs.Bool("analyse", false, "analyser la fusion (seul mode disponible : merge n'écrit jamais de GEDCOM)")
+	sortiePlan = fs.String("plan", "", "écrire le plan de fusion déclaratif (JSON, pour `apply`) dans ce fichier")
+	prefixe = fs.String("prefixe", merge.PrefixeParDefaut, "préfixe de renumérotation proposé pour l'apport")
+	sortieJSON = fs.Bool("json", false, "rapport en JSON plutôt qu'en texte")
+	return
+}
+
 func cmdMerge(argv []string) int {
 	if aideSiDemandee("merge", argv) {
 		return 0
 	}
 	fs := flag.NewFlagSet("merge", flag.ExitOnError)
-	analyse := fs.Bool("analyse", false, "analyser la fusion (seul mode disponible : merge n'écrit jamais de GEDCOM)")
-	sortiePlan := fs.String("plan", "", "écrire le plan de fusion déclaratif (JSON, pour `apply`) dans ce fichier")
-	prefixe := fs.String("prefixe", merge.PrefixeParDefaut, "préfixe de renumérotation proposé pour l'apport")
-	sortieJSON := fs.Bool("json", false, "rapport en JSON plutôt qu'en texte")
+	analyse, sortiePlan, prefixe, sortieJSON := flagsMerge(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if !*analyse {

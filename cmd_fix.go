@@ -46,14 +46,21 @@ func init() {
 	})
 }
 
+// flagsFix enregistre les options de `fix` sur fs — voir flagsCheck (cmd_check.go)
+// pour pourquoi ceci est factorisé à part (réutilisé par le manifeste --ia).
+func flagsFix(fs *flag.FlagSet) (ecrire, interactifF, sortieJSON *bool) {
+	ecrire = fs.Bool("write", false, "appliquer les corrections retenues (sinon simulation)")
+	interactifF = fs.Bool("interactif", false, "confirmer chaque correction individuellement")
+	sortieJSON = fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)")
+	return
+}
+
 func cmdFix(argv []string) int {
 	if aideSiDemandee("fix", argv) {
 		return 0
 	}
 	fs := flag.NewFlagSet("fix", flag.ExitOnError)
-	ecrire := fs.Bool("write", false, "appliquer les corrections retenues (sinon simulation)")
-	interactifF := fs.Bool("interactif", false, "confirmer chaque correction individuellement")
-	sortieJSON := fs.Bool("json", false, "sortie JSON plutôt que texte (pour un usage scripté/agent)")
+	ecrire, interactifF, sortieJSON := flagsFix(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if fs.NArg() < 1 {

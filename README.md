@@ -42,7 +42,7 @@ filiatium check family.ged --avant family.ged.bak-2026-08-04
 filiatium check family.ged --json
 ```
 
-19 règles, groupées en 4 catégories :
+28 règles, groupées en 4 catégories :
 
 | Règles | Catégorie | Contrôle |
 |---|---|---|
@@ -145,10 +145,21 @@ lecture des appariements *certaine*.
 
 ## Usage par un script ou un agent
 
-Toutes les commandes acceptent `--json` (sortie structurée sur stdout, erreurs sur
-stderr) et ont des codes de sortie stables : `0` rien à signaler / succès,
-`1` signalements présents ou écriture refusée (auto-vérification), `2` erreur
-d'usage ou d'E/S.
+```bash
+filiatium --ia
+```
+
+Affiche, en JSON sur stdout, un manifeste complet de l'outil : chaque commande
+avec ses arguments positionnels, toutes ses options (nom, type, valeur par
+défaut, description — dérivées par introspection des vraies définitions de
+drapeaux, jamais recopiées à la main), le registre des 28 règles de `check`,
+les codes de sortie et quelques conseils d'usage. De quoi découvrir toute la
+surface pilotable de l'outil sans parser la sortie texte de `--help`.
+
+Toutes les commandes acceptent aussi `--json` (sortie structurée sur stdout,
+erreurs sur stderr) et ont des codes de sortie stables : `0` rien à signaler /
+succès, `1` signalements présents ou écriture refusée (auto-vérification),
+`2` erreur d'usage ou d'E/S.
 
 Aucune commande ne lit l'entrée standard **si les options nécessaires sont
 fournies** : `check`, `fix` (sans `--interactif`), `add` (avec `--nom` ou
