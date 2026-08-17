@@ -7,6 +7,11 @@ analyser si deux arbres sont fusionnables.
 
 Écrit en Go, zéro dépendance externe (stdlib seule), binaire statique.
 
+**[Releases](https://github.com/FamilyTree-nicoolaj/filiatium/releases)** —
+binaires précompilés (macOS universel, macOS arm64/amd64, Linux amd64/arm64,
+Windows amd64), publiés automatiquement à chaque tag `vX.Y.Z`
+(`.github/workflows/release.yml`).
+
 ## Installer / compiler
 
 ```bash
@@ -18,7 +23,8 @@ make install  # go install dans $GOBIN
 Sans `make`, `go build .` suffit partout où Go est installé (macOS, Linux,
 Windows). `make distribution` compile pour les cinq cibles principales
 (`darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`, `windows/amd64`)
-dans `dist/`.
+plus le binaire universel macOS, dans `dist/` — c'est ce que produit la release
+GitHub ci-dessus.
 
 ## Commandes
 

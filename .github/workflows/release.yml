@@ -1,0 +1,42 @@
+name: release
+
+# Déclenché par un tag "vX.Y.Z" (voir `git tag -a vX.Y.Z` dans le flux de release).
+# Tourne sur macos-latest : `make distribution` a besoin de `lipo` (macOS) pour le
+# binaire universel darwin ; la compilation croisée linux/windows fonctionne aussi
+# bien depuis ce runner (CGO_ENABLED=0, pas de dépendance native).
+#
+# workflow_dispatch en plus : un tag poussé avant l'ajout de ce fichier (ex.
+# v1.0.0) ne déclenche rien rétroactivement — se relance alors à la main depuis
+# l'onglet Actions > release > "Run workflow", en choisissant le tag dans le
+# sélecteur "Use workflow from" (pas un input séparé : c'est déjà ce que fait ce
+# sélecteur).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vérifier (format, vet, tests)
+        run: make verif
+
+      - name: Compiler toutes les cibles (+ binaire universel macOS)
+        run: make distribution
+
+      - name: Publier la release GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
