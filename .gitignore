@@ -1,0 +1,15 @@
+# Binaires compilés
+/filiatium
+/dist/
+
+# Données généalogiques réelles — jamais dans ce dépôt
+*.ged
+!**/testdata/*.ged
+
+# Artefacts de build/test
+*.out
+couverture.out
+*.test
+
+# macOS
+.DS_Store
