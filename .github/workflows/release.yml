@@ -40,3 +40,23 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+      # Le tap Homebrew (Formula/filiatium.rb) vit dans ce même repo — pas de
+      # repo homebrew-* séparé ni de token cross-repo : le GITHUB_TOKEN par
+      # défaut (contents: write ci-dessus) suffit à repousser sur main.
+      - name: Mettre à jour Formula/filiatium.rb
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          SHA=$(curl -sL "$URL" | shasum -a 256 | cut -d' ' -f1)
+          sed -i '' \
+            -e "s#url \".*\"#url \"$URL\"#" \
+            -e "s/sha256 \".*\"/sha256 \"$SHA\"/" \
+            Formula/filiatium.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git add Formula/filiatium.rb
+          git diff --cached --quiet || git commit -m "Formula: bump vers ${TAG}"
+          git push origin main

@@ -13,6 +13,13 @@ binaires précompilés (macOS universel, macOS arm64/amd64, Linux amd64/arm64,
 Windows amd64), publiés automatiquement à chaque tag `vX.Y.Z`
 (`.github/workflows/release.yml`).
 
+**Homebrew** (macOS/Linux, compile en local — pas de blocage Gatekeeper) :
+
+```
+brew tap FamilyTree-nicoolaj/filiatium https://github.com/FamilyTree-nicoolaj/Filiatium
+brew install filiatium
+```
+
 ## Installer / compiler
 
 ```bash
