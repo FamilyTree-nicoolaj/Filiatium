@@ -1,8 +1,8 @@
 class Filiatium < Formula
   desc "Validation et correction de GEDCOM 5.5.1 (compatibilité Gramps)"
   homepage "https://github.com/FamilyTree-nicoolaj/Filiatium"
-  url "https://github.com/FamilyTree-nicoolaj/Filiatium/archive/refs/tags/v2.0.0.tar.gz"
-  sha256 "79b08e4dedd1821d4b562c852ffa11f9774487908d0e8cdca47281e5e4e79ba4"
+  url "https://github.com/FamilyTree-nicoolaj/Filiatium/archive/refs/tags/v2.1.0.tar.gz"
+  sha256 "88ad1d023e668646cedcf94cd73dbe91a22340df9a36d1ca3ac09bbfbeee43b6"
   license "MIT"
   depends_on "go" => :build
 
