@@ -64,7 +64,7 @@ func R7(g *gedcom.Gedcom, s Seuils) []Finding {
 				out = append(out, Finding{Regle: "R7",
 					Message: fmt.Sprintf("%s : %s mère à %d ans (née en %d) de %s (né(e) en %d)",
 						fam.Xref, etiq(g, mere), age, mn, etiq(g, c), cn),
-					Xrefs: []string{fam.Xref, mere, c}})
+					Xrefs: []string{fam.Xref, mere, c}, Faits: []Fait{{mere, "BIRT"}, {c, "BIRT"}}})
 			}
 		}
 	}
@@ -100,7 +100,7 @@ func R8(g *gedcom.Gedcom, s Seuils) []Finding {
 				out = append(out, Finding{Regle: "R8",
 					Message: fmt.Sprintf("%s : %s père à %d ans (né en %d) de %s (né(e) en %d)",
 						fam.Xref, etiq(g, pere), age, pn, etiq(g, c), cn),
-					Xrefs: []string{fam.Xref, pere, c}})
+					Xrefs: []string{fam.Xref, pere, c}, Faits: []Fait{{pere, "BIRT"}, {c, "BIRT"}}})
 			}
 		}
 	}
@@ -145,7 +145,8 @@ func R9(g *gedcom.Gedcom, s Seuils) []Finding {
 					out = append(out, Finding{Regle: "R9",
 						Message: fmt.Sprintf("%s : %s et %s nés à %d mois d'intervalle",
 							fam.Xref, etiq(g, d1.xref), etiq(g, d2.xref), ecart),
-						Xrefs: []string{fam.Xref, d1.xref, d2.xref}})
+						Xrefs: []string{fam.Xref, d1.xref, d2.xref},
+						Faits: []Fait{{d1.xref, "BIRT"}, {d2.xref, "BIRT"}}})
 				}
 			}
 		}
@@ -173,7 +174,7 @@ func R10(g *gedcom.Gedcom, _ Seuils) []Finding {
 				out = append(out, Finding{Regle: "R10",
 					Message: fmt.Sprintf("%s : mariage en %d, mais %s décédé(e) en %d",
 						fam.Xref, am, etiq(g, ep), dm),
-					Xrefs: []string{fam.Xref, ep}})
+					Xrefs: []string{fam.Xref, ep}, Faits: []Fait{{fam.Xref, "MARR"}, {ep, "DEAT"}}})
 			}
 		}
 	}
@@ -190,7 +191,7 @@ func R11(g *gedcom.Gedcom, _ Seuils) []Finding {
 			if a, ok := gedcom.Annee(ind.Date(tag)); ok && a > anneeCourante {
 				out = append(out, Finding{Regle: "R11",
 					Message: fmt.Sprintf("%s : %s en %d, dans le futur", etiq(g, ind.Xref), tag, a),
-					Xrefs:   []string{ind.Xref}})
+					Xrefs:   []string{ind.Xref}, Faits: []Fait{{ind.Xref, tag}}})
 			}
 		}
 	}
@@ -198,7 +199,7 @@ func R11(g *gedcom.Gedcom, _ Seuils) []Finding {
 		if a, ok := gedcom.Annee(fam.Date("MARR")); ok && a > anneeCourante {
 			out = append(out, Finding{Regle: "R11",
 				Message: fmt.Sprintf("%s : MARR en %d, dans le futur", fam.Xref, a),
-				Xrefs:   []string{fam.Xref}})
+				Xrefs:   []string{fam.Xref}, Faits: []Fait{{fam.Xref, "MARR"}}})
 		}
 	}
 	return out
@@ -220,7 +221,7 @@ func R12(g *gedcom.Gedcom, _ Seuils) []Finding {
 				out = append(out, Finding{Regle: "R12",
 					Message: fmt.Sprintf("%s : %s en %d avant sa %s en %d",
 						etiq(g, ind.Xref), p.motTot, at, p.motApres, aa),
-					Xrefs: []string{ind.Xref}})
+					Xrefs: []string{ind.Xref}, Faits: []Fait{{ind.Xref, p.tot}, {ind.Xref, p.apres}}})
 			}
 		}
 	}
@@ -241,6 +242,8 @@ func R13(g *gedcom.Gedcom, s Seuils) []Finding {
 			continue
 		}
 		if age := anneeCourante - n; age > s.LongeviteMax {
+			// Pas de Faits : R13 signale une ABSENCE de décès, rien de concret à
+			// désigner pour publish (on ne supprime pas ce qui n'existe pas).
 			out = append(out, Finding{Regle: "R13",
 				Message: fmt.Sprintf("%s : né(e) en %d (%d ans), aucun décès enregistré",
 					etiq(g, ind.Xref), n, age),

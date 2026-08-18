@@ -3,6 +3,7 @@ package rules
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/FamilyTree-nicoolaj/filiatium/config"
@@ -171,6 +172,9 @@ func TestMariageRecopieDesParents(t *testing.T) {
 	if len(r1) != 1 {
 		t.Errorf("R1 = %+v", r1)
 	}
+	if voulu := []Fait{{"F0001", "MARR"}}; !reflect.DeepEqual(r1[0].Faits, voulu) {
+		t.Errorf("R1 Faits = %+v, voulu %+v", r1[0].Faits, voulu)
+	}
 }
 
 func TestMariageAvantNaissance(t *testing.T) {
@@ -182,6 +186,9 @@ func TestMariageAvantNaissance(t *testing.T) {
 	if len(r2) != 1 {
 		t.Errorf("R2 = %+v", r2)
 	}
+	if voulu := []Fait{{"F0001", "MARR"}, {"I0001", "BIRT"}}; !reflect.DeepEqual(r2[0].Faits, voulu) {
+		t.Errorf("R2 Faits = %+v, voulu %+v", r2[0].Faits, voulu)
+	}
 }
 
 func TestLongeviteInvraisemblable(t *testing.T) {
@@ -191,6 +198,40 @@ func TestLongeviteInvraisemblable(t *testing.T) {
 	r3 := R3(g, config.Defauts())
 	if len(r3) != 1 {
 		t.Errorf("R3 = %+v", r3)
+	}
+	if voulu := []Fait{{"I0001", "BIRT"}, {"I0001", "DEAT"}}; !reflect.DeepEqual(r3[0].Faits, voulu) {
+		t.Errorf("R3 Faits = %+v, voulu %+v", r3[0].Faits, voulu)
+	}
+}
+
+// TestR4FaitsSelonLaBranche vérifie que R4 désigne le DEAT du parent quand l'enfant
+// est né après son décès, mais le BIRT du parent quand c'est l'âge minimal qui est en
+// cause — les deux branches ne visent pas le même fait chez le parent.
+func TestR4FaitsSelonLaBranche(t *testing.T) {
+	apresDeces := charger(t, enteteMinimale+
+		"0 @I0001@ INDI\n1 NAME Père /Untel/\n1 BIRT\n2 DATE 1700\n1 DEAT\n2 DATE 1750\n1 FAMS @F0001@\n"+
+		"0 @I0002@ INDI\n1 NAME Enfant /Untel/\n1 BIRT\n2 DATE 1755\n1 FAMC @F0001@\n"+
+		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 CHIL @I0002@\n"+
+		piedMinimal)
+	r4 := R4(apresDeces, config.Defauts())
+	if len(r4) != 1 {
+		t.Fatalf("R4 (après décès) = %+v", r4)
+	}
+	if voulu := []Fait{{"I0002", "BIRT"}, {"I0001", "DEAT"}}; !reflect.DeepEqual(r4[0].Faits, voulu) {
+		t.Errorf("R4 Faits (après décès) = %+v, voulu %+v", r4[0].Faits, voulu)
+	}
+
+	tropJeune := charger(t, enteteMinimale+
+		"0 @I0001@ INDI\n1 NAME Père /Untel/\n1 BIRT\n2 DATE 1700\n1 FAMS @F0001@\n"+
+		"0 @I0002@ INDI\n1 NAME Enfant /Untel/\n1 BIRT\n2 DATE 1705\n1 FAMC @F0001@\n"+ // père à 5 ans
+		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 CHIL @I0002@\n"+
+		piedMinimal)
+	r4b := R4(tropJeune, config.Defauts())
+	if len(r4b) != 1 {
+		t.Fatalf("R4 (trop jeune) = %+v", r4b)
+	}
+	if voulu := []Fait{{"I0002", "BIRT"}, {"I0001", "BIRT"}}; !reflect.DeepEqual(r4b[0].Faits, voulu) {
+		t.Errorf("R4 Faits (trop jeune) = %+v, voulu %+v", r4b[0].Faits, voulu)
 	}
 }
 
@@ -285,8 +326,12 @@ func TestR13AucunDeces(t *testing.T) {
 	g := charger(t, enteteMinimale+
 		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 BIRT\n2 DATE 1800\n"+
 		piedMinimal)
-	if r13 := R13(g, config.Defauts()); len(r13) != 1 {
+	r13 := R13(g, config.Defauts())
+	if len(r13) != 1 {
 		t.Errorf("R13 = %+v", r13)
+	}
+	if len(r13[0].Faits) != 0 {
+		t.Errorf("R13 : Faits doit rester vide (absence de décès, rien à désigner) : %+v", r13[0].Faits)
 	}
 
 	// "DEAT Y" (décès présumé, sans date) doit être traité comme "décès connu".

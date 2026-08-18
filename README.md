@@ -4,7 +4,8 @@ Outil unique de validation et correction de GEDCOM 5.5.1 (compatibilité Gramps)
 vérifier, corriger ce qui est mécaniquement sûr, ajouter un individu en câblant tous
 ses liens de parenté sans ambiguïté, appliquer des correctifs déclaratifs, analyser
 si deux arbres sont fusionnables (ou les fusionner directement à partir de paires
-d'individus déclarées), et renuméroter proprement un GEDCOM.
+d'individus déclarées), renuméroter proprement un GEDCOM, et en publier une version
+purgée des faits invraisemblables et non sourcés.
 
 Écrit en Go, zéro dépendance externe (stdlib seule), binaire statique.
 
@@ -246,6 +247,37 @@ occurrence en **mot entier** d'un ancien xref (`I0517`, `[I0517]`, ou cité
 jamais un motif générique, seulement les xref réellement issus de cette
 renumérotation précise.
 
+### `publish` — purger les faits invraisemblables et non sourcés
+
+Retire d'un GEDCOM les faits datés (`BIRT`, `MARR`, `DEAT`...) qu'une règle de
+**réalisme** (R1-R13) juge invraisemblables et qu'**aucune citation `SOUR`** ne
+vient étayer — écrit le résultat dans un nouveau fichier `dst.ged`, sans jamais
+toucher `src.ged`. Un fait sourcé (`SOUR` n'importe où sur l'individu/la famille
+concerné, pas nécessairement sur l'événement précis) n'est **jamais** supprimé,
+même signalé : la source fait foi, la plausibilité seule ne juge jamais.
+
+```bash
+filiatium publish family.ged published.ged                        # simulation, niveau strict
+filiatium publish family.ged published.ged --niveau large --write
+filiatium publish family.ged published.ged --interactif --write   # confirme chaque suppression
+```
+
+`--niveau` règle jusqu'où le doute profite au fait, chaque niveau incluant le
+précédent :
+- `strict` (**défaut**) : impossibilités strictes, sans seuil réglable — `R10`
+  (mariage postérieur au décès), `R11` (date dans le futur), `R12` (ordre
+  baptême/naissance ou inhumation/décès incohérent).
+- `modere` : + coïncidences suspectes, copier-coller probable — `R1` (mariage
+  identique à celui des parents), `R5` (deux personnes aux mêmes dates de
+  naissance/décès).
+- `large` : + les 8 règles restantes, basées sur un seuil réglable
+  (`filiatium.json`) — `R2`, `R3`, `R4`, `R6`, `R7`, `R8`, `R9`, `R13`.
+
+Seules les règles de réalisme désignent des candidats : les défauts structurels
+(`S`) et de liens (`L`) sont des défauts mécaniques que `fix` répare plutôt qu'il
+ne supprime, et les doublons (`D`) sont une question de redondance, pas de
+vérité d'un fait.
+
 ## Usage par un script ou un agent
 
 ```bash
@@ -266,13 +298,13 @@ succès, `1` signalements présents ou écriture refusée (auto-vérification),
 
 Aucune commande ne lit l'entrée standard **si les options nécessaires sont
 fournies** : `check`, `fix` (sans `--interactif`), `add` (avec `--nom` ou
-`--fichier`), `apply`, `automerge`, `forcemerge`, `renumber` sont entièrement
-pilotables par arguments, sans
-jamais attendre de saisie. Seuls trois cas lisent stdin : `filiatium` sans
-argument (menu guidé), `add` sans `--nom`/`--fichier` (assistant), et
-`fix --interactif` — à réserver à un usage humain en terminal ; un script ou un
-agent doit toujours passer les options requises plutôt que de compter sur la
-détection de terminal.
+`--fichier`), `apply`, `automerge`, `forcemerge`, `renumber`, `publish` (sans
+`--interactif`) sont entièrement pilotables par arguments, sans jamais attendre
+de saisie. Seuls quatre cas lisent stdin : `filiatium` sans argument (menu
+guidé), `add` sans `--nom`/`--fichier` (assistant), `fix --interactif` et
+`publish --interactif` — à réserver à un usage humain en terminal ; un script
+ou un agent doit toujours passer les options requises plutôt que de compter
+sur la détection de terminal.
 
 ## Développement
 
@@ -299,6 +331,7 @@ add/      ajout d'individu auto-vérifié
 patch/    correctifs déclaratifs JSON (préconditions + opérations)
 merge/    moteur de fusion (identité par contenu/score/ancres) — automerge et forcemerge
 renumber/ renumérotation complète des xref INDI/FAM (source, décalage, préfixe)
+publish/  purge des faits de réalisme non sourcés (niveaux strict/modere/large)
 cmd_*.go  sous-commandes CLI ; main.go/interactif.go l'aiguillage et le menu guidé
 scripts/  parite.sh, roundtrip.sh — recette de non-régression contre le corpus réel
 ```

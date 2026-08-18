@@ -18,6 +18,17 @@ type Finding struct {
 	Regle   string   `json:"regle"`           // "L1"
 	Message string   `json:"message"`         // en français, même formulation que les scripts d'origine
 	Xrefs   []string `json:"xrefs,omitempty"` // pour le tri, le filtrage et l'auto-vérification (add/merge)
+	Faits   []Fait   `json:"faits,omitempty"` // pour publish : quel événement précis ce signalement met en cause
+}
+
+// Fait désigne un événement daté précis (BIRT, MARR, DEAT...) sur un enregistrement,
+// mis en cause par un Finding — seules les règles de réalisme (R1-R13) le renseignent,
+// et seulement quand un événement concret peut être visé (R13, qui signale une
+// ABSENCE de décès, n'a rien à désigner). Sert à `publish` à cibler précisément quoi
+// supprimer sans reparser Message.
+type Fait struct {
+	Xref string `json:"xref"`
+	Tag  string `json:"tag"`
 }
 
 // Regle est une vérification nommée, appelable seule ou via le Registre complet.

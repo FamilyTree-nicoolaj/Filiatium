@@ -183,6 +183,18 @@ func (r *Record) SupprimerLigne(ligne string) bool {
 	return false
 }
 
+// SupprimerEvenement retire le bloc "1 TAG" (tag) et toutes ses sous-lignes, s'il
+// existe. Renvoie false si l'événement est absent. Utilisé par `publish` pour retirer
+// un fait non sourcé qu'une règle de réalisme juge invraisemblable.
+func (r *Record) SupprimerEvenement(tag string) bool {
+	ev := r.Evenement(tag)
+	if ev == nil {
+		return false
+	}
+	r.Lignes = append(r.Lignes[:ev.debut], r.Lignes[ev.fin:]...)
+	return true
+}
+
 func (r *Record) indexChan() int {
 	for j, ligne := range r.Lignes {
 		if ligne == "1 CHAN" {

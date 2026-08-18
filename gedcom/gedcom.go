@@ -189,6 +189,19 @@ func (r *Record) Date(tag string) string {
 	return ev.Date()
 }
 
+// ASource indique si r porte une citation SOUR n'importe où — au niveau de
+// l'enregistrement ("1 SOUR") ou dans l'un de ses événements ("2 SOUR") — sans
+// distinguer laquelle. Sert à `publish` : un fait sourcé n'est jamais supprimé, même
+// jugé invraisemblable par une règle de réalisme.
+func (r *Record) ASource() bool {
+	for _, l := range r.Lignes[1:] {
+		if d, ok := Decoupe(l); ok && d.Tag == "SOUR" {
+			return true
+		}
+	}
+	return false
+}
+
 func empreinte(octets []byte) string {
 	h := sha256.Sum256(octets)
 	return hex.EncodeToString(h[:])

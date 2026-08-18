@@ -99,10 +99,11 @@ func afficherManifesteIA() {
 		ConseilsAgent: []string{
 			`Fournir toujours les options nécessaires (fichier, --nom, etc.) : aucune commande ne lit l'entrée standard si elles le sont — le mode guidé ("filiatium" sans argument) et l'assistant de "add" sont réservés à un usage humain en terminal.`,
 			`Utiliser --json sur chaque commande pour une sortie strictement analysable plutôt que le texte destiné à un humain.`,
-			`fix / add / apply / forcemerge : simulation par défaut, --write pour écrire ; toujours simuler d'abord et relire le résultat.`,
+			`fix / add / apply / forcemerge / publish : simulation par défaut, --write pour écrire ; toujours simuler d'abord et relire le résultat.`,
 			`automerge n'écrit jamais de GEDCOM : produire un plan avec --plan, le relire, puis l'exécuter avec "apply --write". Le plan déduplique déjà le contenu identique et complète les fiches appariées ; --fusionner règle jusqu'où (identiques|certaines|probables|tout, défaut certaines) — au-delà, un rapprochement reste visible au rapport sans jamais entrer dans le plan.`,
 			`forcemerge fusionne directement deux GEDCOM vers un nouveau fichier dst.ged (jamais l'une des deux sources, qui restent intactes), à partir de paires d'individus "xrefA:xrefB" déclarées explicitement (mode miroir) — --fusionner règle jusqu'où l'appariement automatique complète ces ancres. Un conflit de valeur garde la valeur de srcA mais préserve celle de srcB en NOTE : rien n'est jamais perdu silencieusement.`,
-			`Les seuils de réalisme (check, catégorie realisme) sont réglables via un fichier "filiatium.json" posé à côté du GEDCOM.`,
+			`publish retire, vers un nouveau fichier dst.ged (jamais src.ged), les faits datés qu'une règle de réalisme (R1-R13) juge invraisemblables et qu'aucune citation SOUR n'étaye — --niveau règle la prudence : strict (impossibilités sans seuil, défaut), modere (+ coïncidences suspectes), large (+ règles à seuil réglable). Un fait sourcé n'est jamais supprimé.`,
+			`Les seuils de réalisme (check, catégorie realisme ; publish --niveau large) sont réglables via un fichier "filiatium.json" posé à côté du GEDCOM.`,
 		},
 	}
 
@@ -176,6 +177,13 @@ func commandeIAPour(c Commande) commandeIA {
 			{Nom: "srcA.ged", Description: "premier arbre source", Obligatoire: true},
 			{Nom: "srcB.ged", Description: "second arbre source", Obligatoire: true},
 			{Nom: "xrefA:xrefB", Description: "au moins une paire d'ancres \"xref de srcA:xref de srcB\" désignant le même individu (mode miroir)", Obligatoire: true},
+		}
+	case "publish":
+		flagsPublish(fs)
+		ci.Usage = "filiatium publish <src.ged> <dst.ged> [options]"
+		ci.Positionnels = []positionnelIA{
+			{Nom: "src.ged", Description: "GEDCOM source, jamais modifié", Obligatoire: true},
+			{Nom: "dst.ged", Description: "fichier de sortie, avec les faits non sourcés jugés invraisemblables retirés", Obligatoire: true},
 		}
 	}
 

@@ -38,7 +38,8 @@ func R1(g *gedcom.Gedcom, _ Seuils) []Finding {
 					out = append(out, Finding{Regle: "R1",
 						Message: fmt.Sprintf("%s : mariage «%s» identique à celui des parents de %s (%s) — copier-coller probable",
 							fam.Xref, d, etiq(g, ep), fp.Fam),
-						Xrefs: []string{fam.Xref, ep, fp.Fam}})
+						Xrefs: []string{fam.Xref, ep, fp.Fam},
+						Faits: []Fait{{fam.Xref, "MARR"}}})
 				}
 			}
 		}
@@ -66,16 +67,17 @@ func R2(g *gedcom.Gedcom, s Seuils) []Finding {
 			if !okAn {
 				continue
 			}
+			faits := []Fait{{fam.Xref, "MARR"}, {ep, "BIRT"}}
 			switch {
 			case am < an:
 				out = append(out, Finding{Regle: "R2",
 					Message: fmt.Sprintf("%s : mariage en %d, mais %s est né(e) en %d — %d an(s) avant sa naissance",
 						fam.Xref, am, etiq(g, ep), an, an-am),
-					Xrefs: []string{fam.Xref, ep}})
+					Xrefs: []string{fam.Xref, ep}, Faits: faits})
 			case am-an < s.AgeMinParent:
 				out = append(out, Finding{Regle: "R2",
 					Message: fmt.Sprintf("%s : %s marié(e) à %d ans", fam.Xref, etiq(g, ep), am-an),
-					Xrefs:   []string{fam.Xref, ep}})
+					Xrefs:   []string{fam.Xref, ep}, Faits: faits})
 			}
 		}
 	}
@@ -91,15 +93,16 @@ func R3(g *gedcom.Gedcom, s Seuils) []Finding {
 		if !okN || !okM {
 			continue
 		}
+		faits := []Fait{{ind.Xref, "BIRT"}, {ind.Xref, "DEAT"}}
 		switch {
 		case m < n:
 			out = append(out, Finding{Regle: "R3",
 				Message: fmt.Sprintf("%s : décès en %d avant la naissance en %d", etiq(g, ind.Xref), m, n),
-				Xrefs:   []string{ind.Xref}})
+				Xrefs:   []string{ind.Xref}, Faits: faits})
 		case m-n > s.LongeviteMax:
 			out = append(out, Finding{Regle: "R3",
 				Message: fmt.Sprintf("%s : %d ans (%d-%d)", etiq(g, ind.Xref), m-n, n, m),
-				Xrefs:   []string{ind.Xref}})
+				Xrefs:   []string{ind.Xref}, Faits: faits})
 		}
 	}
 	return out
@@ -139,13 +142,15 @@ func R4(g *gedcom.Gedcom, s Seuils) []Finding {
 					out = append(out, Finding{Regle: "R4",
 						Message: fmt.Sprintf("%s : %s né(e) en %d, après le décès de son %s %s en %d",
 							fam.Xref, etiq(g, c), cn, rp.role, etiq(g, rp.parent), pm),
-						Xrefs: []string{fam.Xref, c, rp.parent}})
+						Xrefs: []string{fam.Xref, c, rp.parent},
+						Faits: []Fait{{c, "BIRT"}, {rp.parent, "DEAT"}}})
 				}
 				if okPn && cn-pn < s.AgeMinParent {
 					out = append(out, Finding{Regle: "R4",
 						Message: fmt.Sprintf("%s : %s né(e) en %d, %s %s né(e) en %d — %d an(s) d'écart",
 							fam.Xref, etiq(g, c), cn, rp.role, etiq(g, rp.parent), pn, cn-pn),
-						Xrefs: []string{fam.Xref, c, rp.parent}})
+						Xrefs: []string{fam.Xref, c, rp.parent},
+						Faits: []Fait{{c, "BIRT"}, {rp.parent, "BIRT"}}})
 				}
 			}
 		}
@@ -178,7 +183,8 @@ func R5(g *gedcom.Gedcom, _ Seuils) []Finding {
 						out = append(out, Finding{Regle: "R5",
 							Message: fmt.Sprintf("%s : même date de %s «%s» pour %s et son enfant %s",
 								fam.Xref, tm.mot, a, etiq(g, parent), etiq(g, c)),
-							Xrefs: []string{fam.Xref, parent, c}})
+							Xrefs: []string{fam.Xref, parent, c},
+							Faits: []Fait{{parent, tm.tag}, {c, tm.tag}}})
 					}
 				}
 			}
@@ -211,12 +217,14 @@ func R5(g *gedcom.Gedcom, _ Seuils) []Finding {
 		}
 		sort.Strings(gens)
 		var etiqs []string
+		var faits []Fait
 		for _, x := range gens {
 			etiqs = append(etiqs, etiq(g, x))
+			faits = append(faits, Fait{x, "BIRT"}, Fait{x, "DEAT"})
 		}
 		out = append(out, Finding{Regle: "R5",
 			Message: fmt.Sprintf("mêmes dates (%s † %s) : %s", k.n, k.m, strings.Join(etiqs, ", ")),
-			Xrefs:   gens})
+			Xrefs:   gens, Faits: faits})
 	}
 	return out
 }
@@ -243,7 +251,7 @@ func R6(g *gedcom.Gedcom, s Seuils) []Finding {
 			out = append(out, Finding{Regle: "R6",
 				Message: fmt.Sprintf("%s : %d ans d'écart entre %s (%d) et %s (%d)",
 					fam.Xref, ecart, etiq(g, h), a, etiq(g, w), b),
-				Xrefs: []string{fam.Xref, h, w}})
+				Xrefs: []string{fam.Xref, h, w}, Faits: []Fait{{h, "BIRT"}, {w, "BIRT"}}})
 		}
 	}
 	return out

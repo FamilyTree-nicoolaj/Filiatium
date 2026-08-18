@@ -3,6 +3,29 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Ajouté
+
+- Nouvelle commande `publish` : retire d'un GEDCOM les faits datés (`BIRT`,
+  `MARR`, `DEAT`...) qu'une règle de réalisme (R1-R13) juge invraisemblables
+  et qu'aucune citation `SOUR` ne vient étayer, vers un nouveau fichier
+  `dst.ged` — `src.ged` n'est jamais modifié. Un fait sourcé (`SOUR`
+  n'importe où sur l'individu/la famille concerné) n'est jamais supprimé,
+  même signalé. `--niveau strict|modere|large` (défaut `strict`) règle
+  jusqu'où le doute profite au fait : `strict` ne retient que les
+  impossibilités sans seuil réglable (R10/R11/R12), `modere` ajoute les
+  coïncidences suspectes (R1/R5), `large` ajoute les 8 règles à seuil
+  réglable restantes. `--interactif` confirme chaque suppression
+  individuellement ; sans lui, toutes les suppressions du niveau choisi sont
+  automatiques (mode automatique).
+- `rules.Finding` gagne un champ `Faits` (événement précis mis en cause par
+  chaque règle de réalisme) — sert à `publish` à cibler précisément quoi
+  supprimer, sans reparser le texte du message.
+- `gedcom.Record` gagne `ASource()` (une citation SOUR existe-t-elle n'importe
+  où sur la fiche ?) et `SupprimerEvenement(tag)` (retire un bloc d'événement
+  entier).
+
 ## [2.0.0] — 2026-08-18
 
 ### Cassé
