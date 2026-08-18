@@ -3,6 +3,36 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Modifié
+
+- `merge` : le plan de fusion (`--plan`) ne concatène plus systématiquement
+  l'apport en préfixant tous ses xref. Il identifie désormais les enregistrements
+  par leur **contenu** (jamais par leurs xref, qui peuvent coïncider par accident
+  entre deux exports d'une même base Gramps, ou diverger totalement), réutilise
+  tel quel ce qui est déjà identique dans la base, **complète** les fiches
+  appariées avec les lignes qui leur manquent (ex. une famille dont un export a
+  gardé les enfants et l'autre les parents), et ne renumérote plus qu'en cas de
+  collision réelle de xref.
+- `merge` apparie désormais aussi les **familles** (via leur couple/enfants déjà
+  appariés), pas seulement les individus.
+- Le score d'appariement des individus retranche désormais des points pour
+  chaque conflit de fait (prénom, naissance, sexe) au lieu de se contenter de les
+  lister sans effet sur le score — un rapprochement contredit sur trois points à
+  la fois (ex. même patronyme, prénom/naissance/sexe tous différents) n'est plus
+  affiché du tout, alors qu'il l'était même sans le moindre point de score
+  positif hors le patronyme.
+- Nouvelle option `--fusionner identiques|certaines|probables|tout` (défaut
+  `certaines`) : règle jusqu'où le plan fusionne automatiquement. Chaque niveau
+  inclut le précédent ; au-delà, un rapprochement reste visible au rapport mais
+  n'entre jamais dans le plan.
+- `--prefixe` disparaît (le préfixe de renumérotation est désormais dérivé
+  automatiquement du xref d'origine, et ne sert plus qu'aux collisions réelles).
+- Format JSON de `merge --analyse` : le champ `prefixe_suggere` disparaît au
+  profit de `niveau`, `identiques`, `completees`, `nouveaux`, `renumerotes` et
+  `conflits_non_appliques`.
+
 ## [1.2.0] — 2026-08-17
 
 ### Ajouté

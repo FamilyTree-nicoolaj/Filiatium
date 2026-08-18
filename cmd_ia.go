@@ -100,7 +100,7 @@ func afficherManifesteIA() {
 			`Fournir toujours les options nécessaires (fichier, --nom, etc.) : aucune commande ne lit l'entrée standard si elles le sont — le mode guidé ("filiatium" sans argument) et l'assistant de "add" sont réservés à un usage humain en terminal.`,
 			`Utiliser --json sur chaque commande pour une sortie strictement analysable plutôt que le texte destiné à un humain.`,
 			`fix / add / apply : simulation par défaut, --write pour écrire ; toujours simuler d'abord et relire le résultat.`,
-			`merge n'écrit jamais de GEDCOM : produire un plan avec --plan, le relire, puis l'exécuter avec "apply --write".`,
+			`merge n'écrit jamais de GEDCOM : produire un plan avec --plan, le relire, puis l'exécuter avec "apply --write". Le plan déduplique déjà le contenu identique et complète les fiches appariées ; --fusionner règle jusqu'où (identiques|certaines|probables|tout, défaut certaines) — au-delà, un rapprochement reste visible au rapport sans jamais entrer dans le plan.`,
 			`Les seuils de réalisme (check, catégorie realisme) sont réglables via un fichier "filiatium.json" posé à côté du GEDCOM.`,
 		},
 	}

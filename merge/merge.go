@@ -2,22 +2,26 @@
 // n'écrit jamais de GEDCOM lui-même : Analyser produit un rapport, et Plan produit un
 // correctif déclaratif (patch.Correctif) que l'utilisateur relit puis exécute via
 // `apply` — aucun second mécanisme d'écriture n'existe à côté de celui-là.
+//
+// L'identité entre deux enregistrements ne se déduit jamais de leurs xref (qui
+// peuvent coïncider par accident, comme deux exports d'une même base Gramps, ou au
+// contraire diverger totalement) : uniquement de leur contenu (signature masquée,
+// score nom/date/lieu/parenté) ou de leurs relations déjà établies (couple/enfants
+// pour les familles).
 package merge
 
 import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/FamilyTree-nicoolaj/filiatium/config"
 	"github.com/FamilyTree-nicoolaj/filiatium/gedcom"
 	"github.com/FamilyTree-nicoolaj/filiatium/patch"
 	"github.com/FamilyTree-nicoolaj/filiatium/rules"
 )
-
-// PrefixeParDefaut préfixe les xref de l'apport lors de la renumérotation proposée
-// ("I0001" -> "BI0001") — changez-le si "B" collide déjà.
-const PrefixeParDefaut = "B"
 
 // Classe qualifie la confiance d'un appariement entre deux individus.
 type Classe string
@@ -28,9 +32,67 @@ const (
 	AExaminer Classe = "à examiner"
 )
 
+// Niveau borne ce que le plan de fusion incorpore réellement : chaque cran est un
+// sur-ensemble du précédent (une fusion "probables" inclut aussi les "certaines").
+// Le rapport, lui, liste toujours tous les appariements quel que soit le niveau —
+// seul le plan est filtré.
+type Niveau int
+
+const (
+	NiveauIdentiques Niveau = iota // uniquement le contenu octet-identique, aucun jugement
+	NiveauCertaines                // + appariements certains (individus et familles qui en découlent)
+	NiveauProbables                // + appariements probables (score 40-69)
+	NiveauTout                     // + appariements "à examiner"
+)
+
+func (n Niveau) String() string {
+	switch n {
+	case NiveauIdentiques:
+		return "identiques"
+	case NiveauCertaines:
+		return "certaines"
+	case NiveauProbables:
+		return "probables"
+	case NiveauTout:
+		return "tout"
+	default:
+		return "?"
+	}
+}
+
+// ParseNiveau décode l'option --fusionner.
+func ParseNiveau(s string) (Niveau, error) {
+	switch s {
+	case "identiques":
+		return NiveauIdentiques, nil
+	case "certaines":
+		return NiveauCertaines, nil
+	case "probables":
+		return NiveauProbables, nil
+	case "tout":
+		return NiveauTout, nil
+	default:
+		return 0, fmt.Errorf("niveau de fusion inconnu : %q (attendu identiques|certaines|probables|tout)", s)
+	}
+}
+
+func (n Niveau) accepte(c Classe) bool {
+	switch n {
+	case NiveauCertaines:
+		return c == Certaine
+	case NiveauProbables:
+		return c == Certaine || c == Probable
+	case NiveauTout:
+		return true
+	default: // NiveauIdentiques
+		return false
+	}
+}
+
 // Appariement propose que XrefBase (dans `base`) et XrefApport (dans `apport`)
 // désignent la même personne. Criteres explique ce qui a compté pour le score ;
-// Conflits liste les faits qui s'y opposent (jamais tranchés automatiquement).
+// Conflits liste les faits qui s'y opposent (retranchés du score, jamais tranchés
+// automatiquement).
 type Appariement struct {
 	XrefBase   string   `json:"xref_base"`
 	XrefApport string   `json:"xref_apport"`
@@ -53,59 +115,58 @@ func (c Collisions) Total() int { return c.Individus + c.Familles + c.Sources }
 
 // Analyse est le résultat complet de Analyser.
 type Analyse struct {
-	Collisions         Collisions    `json:"collisions"`
-	PrefixeSuggere     string        `json:"prefixe_suggere"`
-	Appariements       []Appariement `json:"appariements"`                   // triés par score décroissant
-	NouveauxApresMerge []string      `json:"nouveaux_apres_merge,omitempty"` // signalements S*/L*/D*/R* introduits par la seule concaténation mécanique
-	Verdict            string        `json:"verdict"`
+	Collisions           Collisions    `json:"collisions"`
+	Niveau               string        `json:"niveau"`
+	Identiques           int           `json:"identiques"`  // réutilisés sans aucune modification
+	Completees           int           `json:"completees"`  // fiches existantes enrichies de lignes complémentaires
+	Nouveaux             int           `json:"nouveaux"`    // enregistrements insérés (add_record)
+	Renumerotes          int           `json:"renumerotes"` // parmi les nouveaux, ceux dont le xref a dû changer (collision)
+	ConflitsNonAppliques []string      `json:"conflits_non_appliques,omitempty"`
+	Appariements         []Appariement `json:"appariements"` // triés par score décroissant, tous niveaux confondus
+	NouveauxApresMerge   []string      `json:"nouveaux_apres_merge,omitempty"`
+	Verdict              string        `json:"verdict"`
 }
 
 // Analyser compare base et apport et produit le rapport complet. N'écrit rien.
-func Analyser(base, apport *gedcom.Gedcom) *Analyse {
-	prefixe := PrefixeParDefaut
+func Analyser(base, apport *gedcom.Gedcom, niveau Niveau) *Analyse {
+	f := preparer(base, apport, niveau)
 	collisions := detecterCollisions(base, apport)
-	appariements := apparier(base, apport)
 
-	apportR := renumeroter(apport, prefixe)
 	seuils := config.Defauts()
-	avant := unionMessages(toutesRegles(base, seuils), toutesRegles(apportR, seuils))
-	fusion := concatener(base, apportR)
-	apres := toutesRegles(fusion, seuils)
+	apportTraduit := reecrire(apport, f.table)
+	avant := unionMessages(toutesRegles(base, seuils), toutesRegles(apportTraduit, seuils))
+
+	fusionSimulee := reecrire(base, nil)
+	_ = planDepuis(f, "", niveau).Appliquer(fusionSimulee) // invariants de preparer/allouer garantissent l'applicabilité
+	apres := toutesRegles(fusionSimulee, seuils)
 	nouveaux := messagesNonPresents(apres, avant)
 
 	a := &Analyse{
-		Collisions:         collisions,
-		PrefixeSuggere:     prefixe,
-		Appariements:       appariements,
-		NouveauxApresMerge: nouveaux,
+		Collisions:           collisions,
+		Niveau:               niveau.String(),
+		Identiques:           len(f.apparies) - len(f.completes),
+		Completees:           len(f.completes),
+		Nouveaux:             len(f.copies),
+		Renumerotes:          len(f.renumerotes),
+		ConflitsNonAppliques: f.conflits,
+		Appariements:         f.appariements,
+		NouveauxApresMerge:   nouveaux,
 	}
 	a.Verdict = etablirVerdict(a)
 	return a
 }
 
 func etablirVerdict(a *Analyse) string {
-	nCertaines, nProbables, nConflits := 0, 0, 0
-	for _, app := range a.Appariements {
-		switch app.Classe {
-		case Certaine:
-			nCertaines++
-		case Probable:
-			nProbables++
-		}
-		if len(app.Conflits) > 0 {
-			nConflits++
-		}
-	}
 	switch {
 	case len(a.NouveauxApresMerge) > 0:
-		return fmt.Sprintf("à arbitrer : la fusion mécanique introduit %d signalement(s) nouveau(x)", len(a.NouveauxApresMerge))
-	case nConflits > 0:
-		return fmt.Sprintf("à arbitrer : %d appariement(s) avec conflit de faits", nConflits)
-	case a.Collisions.Total() > 0:
-		return fmt.Sprintf("fusionnable après renumérotation (préfixe %q) — %d certaine(s), %d probable(s)",
-			a.PrefixeSuggere, nCertaines, nProbables)
+		return fmt.Sprintf("à arbitrer : la fusion introduit %d signalement(s) nouveau(x)", len(a.NouveauxApresMerge))
+	case len(a.ConflitsNonAppliques) > 0:
+		return fmt.Sprintf("à arbitrer : %d bloc(s) en conflit non appliqué(s)", len(a.ConflitsNonAppliques))
+	case a.Renumerotes > 0:
+		return fmt.Sprintf("fusionnable après renumérotation de %d enregistrement(s) en collision", a.Renumerotes)
 	default:
-		return fmt.Sprintf("fusionnable tel quel — %d certaine(s), %d probable(s)", nCertaines, nProbables)
+		return fmt.Sprintf("fusionnable tel quel — %d réutilisé(s), %d complété(s), %d nouveau(x)",
+			a.Identiques, a.Completees, a.Nouveaux)
 	}
 }
 
@@ -133,6 +194,10 @@ func detecterCollisions(base, apport *gedcom.Gedcom) Collisions {
 const seuilAffichage = 20
 const bonusParente = 20
 
+// apparier calcule, pour chaque paire d'individus candidate (même patronyme normalisé),
+// un score et une classe. Renvoie tous les candidats au-dessus du seuil d'affichage,
+// indépendamment du niveau de fusion demandé — c'est affecterMeilleurs qui filtre et
+// choisit une affectation 1-pour-1 pour le plan.
 func apparier(base, apport *gedcom.Gedcom) []Appariement {
 	index := map[string][]*gedcom.Record{}
 	for _, ind := range base.Individus() {
@@ -175,7 +240,7 @@ func apparier(base, apport *gedcom.Gedcom) []Appariement {
 		a.Score += bonus
 		a.Criteres = append(a.Criteres, crit...)
 		a.Classe = classer(a.Score, a.Conflits)
-		if a.Score >= seuilAffichage || len(a.Conflits) > 0 {
+		if a.Score >= seuilAffichage {
 			out = append(out, a)
 		}
 	}
@@ -217,6 +282,7 @@ func scorer(ind1, ind2 *gedcom.Record) (score int, criteres, conflits []string) 
 		score += 40
 		criteres = append(criteres, "prénom identique")
 	case prenom1 != "" && prenom2 != "":
+		score -= 40
 		conflits = append(conflits, fmt.Sprintf("prénom différent : %q vs %q", prenom1, prenom2))
 	}
 
@@ -230,6 +296,7 @@ func scorer(ind1, ind2 *gedcom.Record) (score int, criteres, conflits []string) 
 		score += 10
 		criteres = append(criteres, fmt.Sprintf("naissance proche (%d vs %d)", a1, a2))
 	case ok1 && ok2:
+		score -= 30
 		conflits = append(conflits, fmt.Sprintf("naissance différente : %d vs %d", a1, a2))
 	default:
 		score += 5 // l'une des deux inconnue : ni pour ni contre
@@ -241,6 +308,7 @@ func scorer(ind1, ind2 *gedcom.Record) (score int, criteres, conflits []string) 
 	}
 
 	if s1, s2 := ind1.Valeur("SEX"), ind2.Valeur("SEX"); s1 != "" && s2 != "" && s1 != s2 {
+		score -= 50
 		conflits = append(conflits, fmt.Sprintf("sexe différent : %s vs %s", s1, s2))
 	}
 
@@ -295,61 +363,407 @@ func abs(n int) int {
 	return n
 }
 
-// --------------------------------------------------- fusion hypothétique (contrôle)
+// affecterMeilleurs choisit, parmi des appariements candidats qui peuvent partager un
+// même xref des deux côtés, une affectation 1-pour-1 : trie par score décroissant et
+// retient chaque paire tant que ni son xref de base ni son xref d'apport n'est déjà
+// pris. Ne conserve que les paires dont la classe est acceptée par niveau.
+func affecterMeilleurs(appariements []Appariement, niveau Niveau) map[string]string {
+	tri := append([]Appariement{}, appariements...)
+	sort.Slice(tri, func(i, j int) bool { return tri[i].Score > tri[j].Score })
+	prisBase, prisApport := map[string]bool{}, map[string]bool{}
+	table := map[string]string{}
+	for _, a := range tri {
+		if !niveau.accepte(a.Classe) {
+			continue
+		}
+		if prisBase[a.XrefBase] || prisApport[a.XrefApport] {
+			continue
+		}
+		table[a.XrefApport] = a.XrefBase
+		prisBase[a.XrefBase], prisApport[a.XrefApport] = true, true
+	}
+	return table
+}
+
+// -------------------------------------------------------- identité par le contenu
 
 var pointeurRe = regexp.MustCompile(`@([A-Za-z0-9_]+)@`)
 
-// renumeroter renvoie une copie de g dont tous les xref sont préfixés (et tous les
-// pointeurs internes réécrits en conséquence), pour ne jamais entrer en collision
-// avec `base` lors d'une fusion. Concaténation directe, sans séparateur : la
-// grammaire des xref (voir gedcom.Decoupe) n'admet que des caractères \w — un tiret
-// romprait le round-trip de lecture, comme dans gedcom.py.
-func renumeroter(g *gedcom.Gedcom, prefixe string) *gedcom.Gedcom {
-	mapping := map[string]string{}
-	for xref := range g.ParXref() {
-		mapping[xref] = prefixe + xref
+// signature renvoie les lignes de l'enregistrement (hors ligne 0) avec tous les
+// pointeurs "@XREF@" masqués — deux enregistrements de contenu identique ont la même
+// signature quels que soient leurs xref respectifs, y compris ceux qu'ils pointent.
+func signature(r *gedcom.Record) string {
+	if len(r.Lignes) <= 1 {
+		return ""
 	}
-	var records []*gedcom.Record
+	masquees := make([]string, len(r.Lignes)-1)
+	for i, l := range r.Lignes[1:] {
+		masquees[i] = pointeurRe.ReplaceAllString(l, "@@")
+	}
+	return strings.Join(masquees, "\n")
+}
+
+// traduire réécrit chaque pointeur "@XREF@" de lignes selon table ; un xref absent de
+// table reste inchangé.
+func traduire(lignes []string, table map[string]string) []string {
+	out := make([]string, len(lignes))
+	for i, l := range lignes {
+		out[i] = pointeurRe.ReplaceAllStringFunc(l, func(m string) string {
+			x := m[1 : len(m)-1]
+			if nv, ok := table[x]; ok {
+				return "@" + nv + "@"
+			}
+			return m
+		})
+	}
+	return out
+}
+
+type cleSignature struct{ tag, sig string }
+
+func grouperParSignature(g *gedcom.Gedcom) map[cleSignature][]*gedcom.Record {
+	m := map[cleSignature][]*gedcom.Record{}
 	for _, r := range g.Records {
-		lignes := make([]string, len(r.Lignes))
-		for i, l := range r.Lignes {
-			lignes[i] = pointeurRe.ReplaceAllStringFunc(l, func(m string) string {
-				x := m[1 : len(m)-1]
-				if nv, ok := mapping[x]; ok {
-					return "@" + nv + "@"
-				}
-				return m
-			})
+		if r.Tag == "HEAD" || r.Tag == "TRLR" {
+			continue
 		}
-		records = append(records, gedcom.NewRecord(lignes))
+		k := cleSignature{r.Tag, signature(r)}
+		m[k] = append(m[k], r)
+	}
+	return m
+}
+
+// apparierContenu identifie les enregistrements de contenu identique entre base et
+// apport, sans jamais se fier à leurs xref : regroupe par (Tag, signature masquée),
+// apparie min(n, m) éléments dans l'ordre du fichier pour chaque groupe partagé — un
+// groupe de cardinalité n:m se produit quand plusieurs enregistrements ont le même
+// contenu visible (ex. plusieurs NOTE identiques) — puis CONFIRME chaque paire en
+// traduisant les pointeurs réels de l'apport avec la table tentative complète et en
+// vérifiant l'égalité avec la base : un groupe sans pointeur sortant (SOUR, NOTE,
+// SUBM) se confirme trivialement ; un groupe avec pointeurs (INDI, FAM) ne se
+// confirme que si les entités qu'il désigne concordent elles aussi.
+//
+// ponytail : une seule passe de confirmation (pas de point fixe itéré) — une paire
+// rejetée ne peut que rendre d'autres paires rejetables, donc l'erreur penche
+// toujours vers la duplication (visible, réversible), jamais vers la fusion
+// silencieuse. Itérer jusqu'à convergence si un cas réel le montre nécessaire.
+func apparierContenu(base, apport *gedcom.Gedcom) map[string]string {
+	groupesBase := grouperParSignature(base)
+	groupesApport := grouperParSignature(apport)
+
+	type candidat struct{ base, apport *gedcom.Record }
+	tentative := map[string]string{}
+	var candidats []candidat
+	for k, listeApport := range groupesApport {
+		listeBase := groupesBase[k]
+		n := len(listeApport)
+		if len(listeBase) < n {
+			n = len(listeBase)
+		}
+		for i := 0; i < n; i++ {
+			candidats = append(candidats, candidat{listeBase[i], listeApport[i]})
+			tentative[listeApport[i].Xref] = listeBase[i].Xref
+		}
+	}
+
+	table := map[string]string{}
+	for _, c := range candidats {
+		traduites := traduire(c.apport.Lignes[1:], tentative)
+		if strings.Join(traduites, "\n") == strings.Join(c.base.Lignes[1:], "\n") {
+			table[c.apport.Xref] = c.base.Xref
+		}
+	}
+	return table
+}
+
+// -------------------------------------------------------------- appariement de familles
+
+// traduireXrefs traduit chaque xref de xrefs selon table, en abandonnant ceux sans
+// correspondance connue (on ne peut rien affirmer sur un enfant non identifié).
+func traduireXrefs(xrefs []string, table map[string]string) []string {
+	var out []string
+	for _, x := range xrefs {
+		if t, ok := table[x]; ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func intersectionCount(a []string, b []string) int {
+	bs := map[string]bool{}
+	for _, x := range b {
+		bs[x] = true
+	}
+	n := 0
+	for _, x := range a {
+		if bs[x] {
+			n++
+		}
+	}
+	return n
+}
+
+type candidatFamille struct {
+	apport, base *gedcom.Record
+	score        int
+}
+
+// apparierFamilles rattache une FAM d'apport (non déjà identifiée par contenu) à une
+// FAM de base quand leurs HUSB/WIFE traduits sont compatibles (égaux, ou absents d'un
+// côté — voir F0127/F0132 du cas réel, où le conjoint a disparu d'un des deux exports)
+// et qu'elles partagent au moins un membre (HUSB, WIFE ou CHIL) déjà identifié.
+// Affectation 1-pour-1 gloutonne sur tous les candidats, comme affecterMeilleurs.
+func apparierFamilles(base, apport *gedcom.Gedcom, table map[string]string) map[string]string {
+	baseFamilles := base.Familles()
+	var candidats []candidatFamille
+	for _, fa := range apport.Familles() {
+		if _, deja := table[fa.Xref]; deja {
+			continue
+		}
+		husbTA, husbOK := table[fa.Valeur("HUSB")]
+		wifeTA, wifeOK := table[fa.Valeur("WIFE")]
+		chilTA := traduireXrefs(fa.Valeurs("CHIL"), table)
+
+		for _, fb := range baseFamilles {
+			husbB, wifeB := fb.Valeur("HUSB"), fb.Valeur("WIFE")
+			if husbOK && husbB != "" && husbTA != husbB {
+				continue
+			}
+			if wifeOK && wifeB != "" && wifeTA != wifeB {
+				continue
+			}
+			score := 0
+			if husbOK && husbTA != "" && husbTA == husbB {
+				score += 10
+			}
+			if wifeOK && wifeTA != "" && wifeTA == wifeB {
+				score += 10
+			}
+			score += intersectionCount(chilTA, fb.Valeurs("CHIL"))
+			if score > 0 {
+				candidats = append(candidats, candidatFamille{fa, fb, score})
+			}
+		}
+	}
+
+	sort.Slice(candidats, func(i, j int) bool { return candidats[i].score > candidats[j].score })
+	prisApport, prisBase := map[string]bool{}, map[string]bool{}
+	resultat := map[string]string{}
+	for _, c := range candidats {
+		if prisApport[c.apport.Xref] || prisBase[c.base.Xref] {
+			continue
+		}
+		resultat[c.apport.Xref] = c.base.Xref
+		prisApport[c.apport.Xref], prisBase[c.base.Xref] = true, true
+	}
+	return resultat
+}
+
+// ------------------------------------------------------- renumérotation sur collision
+
+// prefixeDepuis dérive un préfixe de nommage à partir d'un xref d'apport (ex.
+// "I0116" -> "I") pour l'allocation d'un nouveau xref en cas de collision, avec un
+// repli sur l'initiale du tag si le xref n'a pas de suffixe numérique.
+var suffixeChiffresRe = regexp.MustCompile(`\d+$`)
+
+func prefixeDepuis(xref, tag string) string {
+	p := suffixeChiffresRe.ReplaceAllString(xref, "")
+	if p == "" && tag != "" {
+		p = strings.ToUpper(tag[:1])
+	}
+	return p
+}
+
+func xrefSuivant(xref, prefixe string) string {
+	suffixe := strings.TrimPrefix(xref, prefixe)
+	n, _ := strconv.Atoi(suffixe) // toujours numérique : format produit par gedcom.ProchainXref
+	return fmt.Sprintf("%s%0*d", prefixe, len(suffixe), n+1)
+}
+
+// allouer complète, pour chaque xref d'apport non identifié (absent de apparies),
+// une entrée de table : le xref d'origine s'il est libre dans la base et pas déjà
+// alloué dans ce plan, sinon un nouveau via gedcom.ProchainXref. add_record ne
+// vérifie pas lui-même qu'un xref est libre (voir patch.Operation.Appliquer) : c'est
+// ici, une fois pour toutes, que la garantie est établie.
+func allouer(base, apport *gedcom.Gedcom, apparies map[string]string) (table, renumerotes map[string]string) {
+	table = make(map[string]string, len(apparies))
+	for x, b := range apparies {
+		table[x] = b
+	}
+	pris := map[string]bool{}
+	for x := range base.ParXref() {
+		pris[x] = true
+	}
+	renumerotes = map[string]string{}
+	suivant := map[string]string{} // préfixe -> prochain candidat, avance à chaque allocation
+
+	for _, r := range apport.Records {
+		if r.Tag == "HEAD" || r.Tag == "TRLR" || r.Xref == "" {
+			continue
+		}
+		if _, identifie := apparies[r.Xref]; identifie {
+			continue
+		}
+		if !pris[r.Xref] {
+			table[r.Xref] = r.Xref
+			pris[r.Xref] = true
+			continue
+		}
+		prefixe := prefixeDepuis(r.Xref, r.Tag)
+		candidat, connu := suivant[prefixe]
+		if !connu {
+			candidat = base.ProchainXref(prefixe)
+		}
+		for pris[candidat] {
+			candidat = xrefSuivant(candidat, prefixe)
+		}
+		table[r.Xref] = candidat
+		renumerotes[r.Xref] = candidat
+		pris[candidat] = true
+		suivant[prefixe] = xrefSuivant(candidat, prefixe)
+	}
+	return table, renumerotes
+}
+
+// reecrire renvoie une copie de g dont tous les pointeurs (y compris la ligne 0, donc
+// le xref propre de chaque enregistrement) sont réécrits selon table. table nil ou
+// vide produit une copie profonde inchangée.
+func reecrire(g *gedcom.Gedcom, table map[string]string) *gedcom.Gedcom {
+	records := make([]*gedcom.Record, len(g.Records))
+	for i, r := range g.Records {
+		records[i] = gedcom.NewRecord(traduire(r.Lignes, table))
 	}
 	return &gedcom.Gedcom{Records: records}
 }
 
-// concatener assemble base et apportRenumerote en un seul Gedcom en mémoire : les
-// enregistrements de l'apport (hors HEAD/TRLR) prennent place avant le TRLR de base.
-// Uniquement pour l'analyse — jamais sauvegardé tel quel (voir Plan pour la version
-// écrite via `apply`).
-func concatener(base, apportRenumerote *gedcom.Gedcom) *gedcom.Gedcom {
-	var records []*gedcom.Record
-	var trlr *gedcom.Record
-	for _, r := range base.Records {
-		if r.Tag == "TRLR" {
-			trlr = r
+// -------------------------------------------------------- union des lignes complémentaires
+
+// tagsRepetables peuvent légitimement apparaître plusieurs fois sur un même
+// enregistrement (plusieurs enfants, plusieurs notes, plusieurs sources...) : un bloc
+// de ce tag absent de la base s'ajoute toujours. Un tag absent de tagsRepetables et
+// déjà présent avec un contenu différent (ex. deux "1 MARR" de dates différentes) est
+// un conflit de valeur, jamais tranché automatiquement.
+var tagsRepetables = map[string]bool{
+	"CHIL": true, "NOTE": true, "SOUR": true, "OBJE": true,
+	"FAMS": true, "FAMC": true, "ASSO": true,
+}
+
+// blocs découpe lignes (déjà hors ligne 0) en unités "ligne de niveau 1 + ses
+// sous-lignes" — un fait GEDCOM ("1 MARR" + "2 DATE" + "2 PLAC"...) est une unité de
+// comparaison, jamais une ligne isolée.
+func blocs(lignes []string) [][]string {
+	var out [][]string
+	for _, l := range lignes {
+		if d, ok := gedcom.Decoupe(l); ok && d.Niveau == 1 {
+			out = append(out, []string{l})
 			continue
 		}
-		records = append(records, r)
+		if len(out) == 0 {
+			continue
+		}
+		out[len(out)-1] = append(out[len(out)-1], l)
 	}
-	for _, r := range apportRenumerote.Records {
+	return out
+}
+
+// lignesAAjouter compare, bloc par bloc, apportRec (déjà traduit selon table) à
+// baseRec : ajouts est ce qui manque à la base (tag répétable, ou tag totalement
+// absent de la base) ; conflits est ce qui diverge sur un tag mono-valué déjà présent
+// (ex. deux dates de mariage différentes) — jamais appliqué, remonté pour arbitrage.
+func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) (ajouts, conflits []string) {
+	baseBlocs := blocs(baseRec.Lignes[1:])
+	baseSet := map[string]bool{}
+	baseTags := map[string]bool{}
+	for _, b := range baseBlocs {
+		baseSet[strings.Join(b, "\n")] = true
+		if d, ok := gedcom.Decoupe(b[0]); ok {
+			baseTags[d.Tag] = true
+		}
+	}
+
+	apportBlocs := blocs(traduire(apportRec.Lignes[1:], table))
+	for _, b := range apportBlocs {
+		d, ok := gedcom.Decoupe(b[0])
+		if !ok || d.Tag == "CHAN" {
+			continue
+		}
+		if baseSet[strings.Join(b, "\n")] {
+			continue
+		}
+		if tagsRepetables[d.Tag] || !baseTags[d.Tag] {
+			ajouts = append(ajouts, b...)
+			continue
+		}
+		conflits = append(conflits, fmt.Sprintf("%s : %s divergent (base garde le sien, non appliqué)", baseRec.Xref, d.Tag))
+	}
+	return ajouts, conflits
+}
+
+// -------------------------------------------------------------------------- fusion
+
+// fusion est le résultat de preparer : tout ce qu'il faut pour produire aussi bien le
+// rapport (Analyser) que le correctif (Plan), à partir du même calcul — les deux ne
+// peuvent donc jamais diverger l'un de l'autre.
+type fusion struct {
+	apparies     map[string]string   // xref apport -> xref base, identité confirmée (contenu, individu ou famille)
+	table        map[string]string   // xref apport -> xref final (identifié, conservé ou nouveau) : couvre tout apport
+	completes    map[string][]string // xref base -> lignes complémentaires à ajouter (add_lines)
+	conflits     []string            // blocs divergents, jamais appliqués
+	copies       []*gedcom.Record    // enregistrements d'apport traduits à insérer (add_record)
+	renumerotes  map[string]string   // xref apport -> nouveau xref, uniquement en cas de collision réelle
+	appariements []Appariement       // scoring individus complet (tous niveaux), pour le rapport
+}
+
+func preparer(base, apport *gedcom.Gedcom, niveau Niveau) *fusion {
+	apparies := apparierContenu(base, apport)
+	prisBase := map[string]bool{}
+	for _, xb := range apparies {
+		prisBase[xb] = true
+	}
+
+	scored := apparier(base, apport)
+	for xa, xb := range affecterMeilleurs(scored, niveau) {
+		if _, deja := apparies[xa]; deja || prisBase[xb] {
+			continue
+		}
+		apparies[xa] = xb
+		prisBase[xb] = true
+	}
+
+	if niveau > NiveauIdentiques {
+		for xa, xb := range apparierFamilles(base, apport, apparies) {
+			if _, deja := apparies[xa]; deja || prisBase[xb] {
+				continue
+			}
+			apparies[xa] = xb
+			prisBase[xb] = true
+		}
+	}
+
+	table, renumerotes := allouer(base, apport, apparies)
+
+	f := &fusion{
+		apparies: apparies, table: table, renumerotes: renumerotes,
+		completes: map[string][]string{}, appariements: scored,
+	}
+
+	for _, r := range apport.Records {
 		if r.Tag == "HEAD" || r.Tag == "TRLR" {
 			continue
 		}
-		records = append(records, r)
+		if xb, identifie := apparies[r.Xref]; identifie {
+			baseRec, _ := base.Get(xb)
+			ajouts, conflits := lignesAAjouter(baseRec, r, table)
+			if len(ajouts) > 0 {
+				f.completes[xb] = append(f.completes[xb], ajouts...)
+			}
+			f.conflits = append(f.conflits, conflits...)
+			continue
+		}
+		f.copies = append(f.copies, gedcom.NewRecord(traduire(r.Lignes, table)))
 	}
-	if trlr != nil {
-		records = append(records, trlr)
-	}
-	return &gedcom.Gedcom{Records: records}
+	return f
 }
 
 func toutesRegles(g *gedcom.Gedcom, seuils config.Seuils) []rules.Finding {
@@ -387,30 +801,38 @@ func messagesNonPresents(findings []rules.Finding, deja map[string]bool) []strin
 
 // -------------------------------------------------------------------------- plan
 
-// Plan construit le correctif déclaratif qui réaliserait la fusion mécanique :
-// insérer, dans `base`, chaque enregistrement de `apport` renuméroté avec le préfixe
-// suggéré. N'identifie pas les doublons entre les deux arbres — c'est aux
-// Appariements *certaine* de guider une relecture avant d'exécuter ce plan avec
-// `apply --write` (fusionner deux fiches reste un jugement humain, jamais automatique).
-func Plan(base, apport *gedcom.Gedcom, cheminBaseAffiche string, prefixe string) *patch.Correctif {
-	if prefixe == "" {
-		prefixe = PrefixeParDefaut
-	}
-	apportR := renumeroter(apport, prefixe)
+func planDepuis(f *fusion, cheminBaseAffiche string, niveau Niveau) *patch.Correctif {
 	var ops []patch.Operation
-	for _, r := range apportR.Records {
-		if r.Tag == "HEAD" || r.Tag == "TRLR" {
-			continue
-		}
+	for _, r := range f.copies {
 		ops = append(ops, patch.Operation{Op: "add_record", Lignes: append([]string{}, r.Lignes...)})
+	}
+	var xrefsCompletes []string
+	for xb := range f.completes {
+		xrefsCompletes = append(xrefsCompletes, xb)
+	}
+	sort.Strings(xrefsCompletes)
+	for _, xb := range xrefsCompletes {
+		ops = append(ops, patch.Operation{Op: "add_lines", Xref: xb, Lignes: append([]string{}, f.completes[xb]...)})
 	}
 	return &patch.Correctif{
 		Cible: cheminBaseAffiche,
 		Justification: fmt.Sprintf(
-			"Plan de fusion généré par `merge --analyse` (préfixe %q) — insère %d enregistrement(s) "+
-				"renumérotés depuis l'apport. Ne fusionne aucune fiche identifiée comme doublon : "+
-				"relire le rapport d'appariement avant d'exécuter ce plan avec `apply --write`.",
-			prefixe, len(ops)),
+			"Plan de fusion généré par `merge --analyse` (niveau %s) — réutilise %d enregistrement(s) déjà "+
+				"identique(s), complète %d fiche(s) existante(s), insère %d enregistrement(s) nouveau(x) "+
+				"(dont %d renuméroté(s) pour collision de xref). %d bloc(s) en conflit non appliqué(s) : "+
+				"à arbitrer avant `apply --write`.",
+			niveau, len(f.apparies)-len(f.completes), len(f.completes), len(f.copies),
+			len(f.renumerotes), len(f.conflits)),
 		Operations: ops,
 	}
+}
+
+// Plan construit le correctif déclaratif qui réaliserait la fusion au niveau demandé :
+// réutilise tout ce qui est déjà identique dans la base, complète les fiches
+// appariées avec les lignes qui leur manquent, et insère le reste (renumérotant
+// seulement en cas de collision réelle de xref). Un appariement au-delà du niveau
+// choisi reste visible au rapport (voir Analyser) mais n'entre jamais dans ce plan —
+// c'est un jugement humain, à faire à la lecture des appariements "à examiner".
+func Plan(base, apport *gedcom.Gedcom, cheminBaseAffiche string, niveau Niveau) *patch.Correctif {
+	return planDepuis(preparer(base, apport, niveau), cheminBaseAffiche, niveau)
 }

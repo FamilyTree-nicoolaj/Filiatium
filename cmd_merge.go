@@ -14,26 +14,39 @@ const aideMerge = `
 filiatium merge --analyse <base.ged> <apport.ged> [options]
 
 Analyse si deux GEDCOM sont fusionnables — n'écrit jamais de GEDCOM lui-même.
-Produit un rapport : collisions de xref, appariements d'individus classés
-certaine/probable/à examiner (avec les critères qui ont joué et les conflits de
-faits éventuels), et contradictions qu'introduirait une fusion mécanique
-(rejoue le registre de règles sur une concaténation renumérotée). Avec --plan,
-écrit en plus un plan de fusion déclaratif exécutable via "filiatium apply".
+Identifie les enregistrements par leur CONTENU, jamais par leurs xref (qui peuvent
+coïncider par accident, comme deux exports d'une même base Gramps, ou diverger
+totalement). Produit un rapport (collisions de xref, appariements d'individus
+classés certaine/probable/à examiner avec leurs critères et conflits, contradictions
+qu'introduirait la fusion) et, avec --plan, un plan de fusion déclaratif exécutable
+via "filiatium apply" : il réutilise tel quel ce qui est déjà identique dans la base,
+complète les fiches appariées avec les lignes qui leur manquent (ex. une famille dont
+un export a gardé les enfants et l'autre les parents), et n'insère vraiment de
+nouveaux enregistrements que pour ce qui reste — en renumérotant seulement en cas de
+collision réelle de xref.
 
 --analyse est obligatoire : c'est le seul mode disponible pour l'instant.
 
 Options :
-  --analyse         obligatoire — analyser la fusion
-  --plan <fichier>  écrire le plan de fusion déclaratif (JSON, pour apply) dans ce fichier
-  --prefixe <p>     préfixe de renumérotation proposé pour l'apport (défaut : B)
-  --json            rapport en JSON plutôt qu'en texte
+  --analyse            obligatoire — analyser la fusion
+  --plan <fichier>      écrire le plan de fusion déclaratif (JSON, pour apply) dans ce fichier
+  --fusionner <niveau>  ce que le plan incorpore : identiques|certaines|probables|tout (défaut : certaines)
+  --json                rapport en JSON plutôt qu'en texte
 
-Le plan ne fusionne aucune fiche identifiée comme doublon automatiquement :
-c'est un jugement humain, à faire à la lecture des appariements "certaine".
+--fusionner définit jusqu'où le plan fusionne automatiquement (chaque niveau inclut
+le précédent) :
+  identiques  uniquement le contenu octet-identique entre les deux fichiers — aucun jugement
+  certaines   + les appariements certains (individus et familles qui en découlent)
+  probables   + les appariements probables (score 40-69)
+  tout        + les appariements "à examiner"
+
+Un appariement au-delà du niveau choisi reste visible au rapport mais n'entre jamais
+dans le plan : un bloc en conflit de valeur (ex. deux dates de mariage différentes)
+n'est jamais appliqué non plus, quel que soit le niveau — c'est un jugement humain.
 
 Exemples :
   filiatium merge --analyse family.ged secondary_trees/sicard-binas-1779.ged
-  filiatium merge --analyse base.ged apport.ged --plan fusion.json --prefixe B
+  filiatium merge --analyse base.ged apport.ged --plan fusion.json --fusionner certaines
   filiatium apply fusion.json --write   # après relecture du rapport
 `
 
@@ -48,10 +61,10 @@ func init() {
 
 // flagsMerge enregistre les options de `merge` sur fs — voir flagsCheck
 // (cmd_check.go) pour pourquoi ceci est factorisé à part.
-func flagsMerge(fs *flag.FlagSet) (analyse *bool, sortiePlan, prefixe *string, sortieJSON *bool) {
+func flagsMerge(fs *flag.FlagSet) (analyse *bool, sortiePlan, fusionner *string, sortieJSON *bool) {
 	analyse = fs.Bool("analyse", false, "analyser la fusion (seul mode disponible : merge n'écrit jamais de GEDCOM)")
 	sortiePlan = fs.String("plan", "", "écrire le plan de fusion déclaratif (JSON, pour `apply`) dans ce fichier")
-	prefixe = fs.String("prefixe", merge.PrefixeParDefaut, "préfixe de renumérotation proposé pour l'apport")
+	fusionner = fs.String("fusionner", "certaines", "ce que le plan incorpore : identiques|certaines|probables|tout")
 	sortieJSON = fs.Bool("json", false, "rapport en JSON plutôt qu'en texte")
 	return
 }
@@ -61,11 +74,11 @@ func cmdMerge(argv []string) int {
 		return 0
 	}
 	fs := flag.NewFlagSet("merge", flag.ExitOnError)
-	analyse, sortiePlan, prefixe, sortieJSON := flagsMerge(fs)
+	analyse, sortiePlan, fusionnerFlag, sortieJSON := flagsMerge(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if !*analyse {
-		fmt.Fprintln(os.Stderr, "usage : filiatium merge --analyse <base.ged> <apport.ged> [--plan fusion.json] [--prefixe B]")
+		fmt.Fprintln(os.Stderr, "usage : filiatium merge --analyse <base.ged> <apport.ged> [--plan fusion.json] [--fusionner certaines]")
 		return 2
 	}
 	if fs.NArg() < 2 {
@@ -73,6 +86,12 @@ func cmdMerge(argv []string) int {
 		return 2
 	}
 	cheminBase, cheminApport := fs.Arg(0), fs.Arg(1)
+
+	niveau, err := merge.ParseNiveau(*fusionnerFlag)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "erreur :", err)
+		return 2
+	}
 
 	base, err := gedcom.Load(cheminBase)
 	if err != nil {
@@ -85,10 +104,10 @@ func cmdMerge(argv []string) int {
 		return 2
 	}
 
-	a := merge.Analyser(base, apport)
+	a := merge.Analyser(base, apport, niveau)
 
 	if *sortiePlan != "" {
-		plan := merge.Plan(base, apport, cheminBase, *prefixe)
+		plan := merge.Plan(base, apport, cheminBase, niveau)
 		octets, err := json.MarshalIndent(plan, "", "  ")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "erreur :", err)
@@ -118,8 +137,19 @@ func afficherMergeTexte(cheminBase, cheminApport string, a *merge.Analyse) {
 	fmt.Printf("base   : %s\napport : %s\n\n", cheminBase, cheminApport)
 
 	fmt.Println("=== collisions de xref")
-	fmt.Printf("    INDI %d, FAM %d, SOUR %d — préfixe de renumérotation suggéré : %q\n\n",
-		a.Collisions.Individus, a.Collisions.Familles, a.Collisions.Sources, a.PrefixeSuggere)
+	fmt.Printf("    INDI %d, FAM %d, SOUR %d\n\n",
+		a.Collisions.Individus, a.Collisions.Familles, a.Collisions.Sources)
+
+	fmt.Printf("=== fusion proposée (niveau %q)\n", a.Niveau)
+	fmt.Printf("    %d réutilisé(s) à l'identique, %d fiche(s) complétée(s), %d nouveau(x), %d renuméroté(s)\n",
+		a.Identiques, a.Completees, a.Nouveaux, a.Renumerotes)
+	if len(a.ConflitsNonAppliques) > 0 {
+		fmt.Printf("    %d bloc(s) en conflit, non appliqué(s) — à arbitrer :\n", len(a.ConflitsNonAppliques))
+		for _, c := range a.ConflitsNonAppliques {
+			fmt.Println("        ⚠ " + c)
+		}
+	}
+	fmt.Println()
 
 	fmt.Printf("=== appariements (%d)\n", len(a.Appariements))
 	for _, app := range a.Appariements {
@@ -134,7 +164,7 @@ func afficherMergeTexte(cheminBase, cheminApport string, a *merge.Analyse) {
 	}
 	fmt.Println()
 
-	fmt.Printf("=== contradictions introduites par la fusion mécanique (%d)\n", len(a.NouveauxApresMerge))
+	fmt.Printf("=== contradictions introduites par la fusion (%d)\n", len(a.NouveauxApresMerge))
 	for _, n := range a.NouveauxApresMerge {
 		fmt.Println("    " + n)
 	}

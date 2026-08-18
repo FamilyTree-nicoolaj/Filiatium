@@ -138,21 +138,35 @@ avait pas du tout.
 
 ### `merge --analyse` — deux GEDCOM sont-ils fusionnables ?
 
-N'écrit jamais de GEDCOM. Produit un rapport (collisions de xref, appariements
-d'individus classés *certaine*/*probable*/*à examiner* avec leurs critères et
-conflits, contradictions qu'introduirait une concaténation mécanique) et,
+N'écrit jamais de GEDCOM. Identifie les enregistrements par leur **contenu**,
+jamais par leurs xref (qui peuvent coïncider par accident — deux exports d'une
+même base Gramps — ou diverger totalement). Produit un rapport (collisions de
+xref, appariements d'individus classés *certaine*/*probable*/*à examiner* avec
+leurs critères et conflits, contradictions qu'introduirait la fusion) et,
 optionnellement, un plan de fusion au format `apply` :
 
 ```bash
 filiatium merge --analyse family.ged secondary_trees/sicard-binas-1779.ged
-filiatium merge --analyse base.ged apport.ged --plan fusion.json --prefixe B
+filiatium merge --analyse base.ged apport.ged --plan fusion.json --fusionner certaines
 filiatium apply fusion.json --write   # après relecture du rapport
 ```
 
-Le plan renumérote les xref de l'apport (préfixe, ex. `I0001` → `BI0001`) et
-insère chaque enregistrement dans `base` — il ne fusionne **aucune** fiche
-identifiée comme doublon automatiquement : c'est un jugement humain, à faire à la
-lecture des appariements *certaine*.
+Le plan **réutilise tel quel** ce qui est déjà identique dans `base`, **complète**
+les fiches appariées avec les lignes qui leur manquent (ex. une famille dont un
+export a gardé les enfants et l'autre les parents), et n'**insère** vraiment de
+nouveaux enregistrements que pour ce qui reste — en renumérotant seulement en cas
+de collision réelle de xref.
+
+`--fusionner` règle jusqu'où le plan fusionne automatiquement, chaque niveau
+incluant le précédent : `identiques` (uniquement le contenu octet-identique, aucun
+jugement) < `certaines` (+ appariements certains, individus et familles qui en
+découlent — **défaut**) < `probables` (+ score 40-69) < `tout` (+ *à examiner*).
+Un appariement au-delà du niveau choisi, ou un bloc en conflit de valeur (ex. deux
+dates de mariage différentes), reste visible au rapport mais n'entre jamais dans
+le plan : dédupliquer du contenu identique ou compléter une fiche avec ce qui lui
+manque n'est pas un arbitrage (rien n'est choisi ni perdu) ; fusionner deux fiches
+qui se *ressemblent* au-delà de `certaines`, ou trancher une valeur qui diverge,
+reste un jugement humain, à faire à la lecture du rapport.
 
 ## Usage par un script ou un agent
 
@@ -204,16 +218,19 @@ config/   seuils réglables (config.Defauts / config.Charger)
 fix/      détection + application des 3 corrections mécaniques
 add/      ajout d'individu auto-vérifié
 patch/    correctifs déclaratifs JSON (préconditions + opérations)
-merge/    analyse de fusion (appariement, collisions, plan)
+merge/    analyse de fusion (identité par contenu, appariement, plan dédupliquant)
 cmd_*.go  sous-commandes CLI ; main.go/interactif.go l'aiguillage et le menu guidé
 scripts/  parite.sh, roundtrip.sh — recette de non-régression contre le corpus réel
 ```
 
 ## Hors périmètre (délibérément)
 
-GEDCOM 7, ANSEL, suppression automatique des pointeurs morts, fusion automatique
-de fiches identifiées comme doublons, interface graphique — voir le plan de
-conception pour le raisonnement détaillé de chaque exclusion.
+GEDCOM 7, ANSEL, suppression automatique des pointeurs morts, interface graphique
+— voir le plan de conception pour le raisonnement détaillé de chaque exclusion.
+`merge` déduplique automatiquement le contenu octet-identique et complète les
+fiches appariées avec certitude (aucune information choisie ni perdue), mais ne
+fusionne jamais deux fiches qui se *ressemblent* seulement, ni ne tranche un bloc
+en conflit de valeur : ça reste un jugement humain.
 
 ## Licence
 
