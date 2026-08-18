@@ -92,7 +92,9 @@ func (n Niveau) accepte(c Classe) bool {
 // Appariement propose que XrefBase (dans `base`) et XrefApport (dans `apport`)
 // désignent la même personne. Criteres explique ce qui a compté pour le score ;
 // Conflits liste les faits qui s'y opposent (retranchés du score, jamais tranchés
-// automatiquement).
+// automatiquement). Force indique une ancre fournie par l'utilisateur (voir
+// forcemerge/PlanForce) plutôt que détectée par contenu ou par score — jamais remise
+// en cause par l'appariement automatique.
 type Appariement struct {
 	XrefBase   string   `json:"xref_base"`
 	XrefApport string   `json:"xref_apport"`
@@ -102,6 +104,7 @@ type Appariement struct {
 	Classe     Classe   `json:"classe"`
 	Criteres   []string `json:"criteres,omitempty"`
 	Conflits   []string `json:"conflits,omitempty"`
+	Force      bool     `json:"force,omitempty"`
 }
 
 // Collisions compte les xref que `base` et `apport` définissent tous les deux.
@@ -127,9 +130,10 @@ type Analyse struct {
 	Verdict              string        `json:"verdict"`
 }
 
-// Analyser compare base et apport et produit le rapport complet. N'écrit rien.
-func Analyser(base, apport *gedcom.Gedcom, niveau Niveau) *Analyse {
-	f := preparer(base, apport, niveau)
+// Analyser compare base et apport et produit le rapport complet. N'écrit rien. forces
+// (voir preparer) est nil pour une analyse ordinaire ; forcemerge y passe ses ancres.
+func Analyser(base, apport *gedcom.Gedcom, niveau Niveau, forces map[string]string) *Analyse {
+	f := preparer(base, apport, niveau, forces)
 	collisions := detecterCollisions(base, apport)
 
 	seuils := config.Defauts()
@@ -137,7 +141,10 @@ func Analyser(base, apport *gedcom.Gedcom, niveau Niveau) *Analyse {
 	avant := unionMessages(toutesRegles(base, seuils), toutesRegles(apportTraduit, seuils))
 
 	fusionSimulee := base.Retraduire(nil)
-	_ = planDepuis(f, "", niveau).Appliquer(fusionSimulee) // invariants de preparer/allouer garantissent l'applicabilité
+	// Sonde interne, jamais écrite : préserverConflits=false ici n'affecte pas le
+	// résultat (NOTE est inerte pour toutes les règles), et reste indépendant de ce que
+	// PlanForce écrira réellement pour le mode "ancres".
+	_ = planDepuis(f, "", niveau, false).Appliquer(fusionSimulee) // invariants de preparer/allouer garantissent l'applicabilité
 	apres := toutesRegles(fusionSimulee, seuils)
 	nouveaux := messagesNonPresents(apres, avant)
 
@@ -148,7 +155,7 @@ func Analyser(base, apport *gedcom.Gedcom, niveau Niveau) *Analyse {
 		Completees:           len(f.completes),
 		Nouveaux:             len(f.copies),
 		Renumerotes:          len(f.renumerotes),
-		ConflitsNonAppliques: f.conflits,
+		ConflitsNonAppliques: messagesDeConflits(f.conflits),
 		Appariements:         f.appariements,
 		NouveauxApresMerge:   nouveaux,
 	}
@@ -168,6 +175,14 @@ func etablirVerdict(a *Analyse) string {
 		return fmt.Sprintf("fusionnable tel quel — %d réutilisé(s), %d complété(s), %d nouveau(x)",
 			a.Identiques, a.Completees, a.Nouveaux)
 	}
+}
+
+func messagesDeConflits(conflits []Conflit) []string {
+	out := make([]string, len(conflits))
+	for i, c := range conflits {
+		out[i] = c.Message
+	}
+	return out
 }
 
 func detecterCollisions(base, apport *gedcom.Gedcom) Collisions {
@@ -195,10 +210,13 @@ const seuilAffichage = 20
 const bonusParente = 20
 
 // apparier calcule, pour chaque paire d'individus candidate (même patronyme normalisé),
-// un score et une classe. Renvoie tous les candidats au-dessus du seuil d'affichage,
-// indépendamment du niveau de fusion demandé — c'est affecterMeilleurs qui filtre et
-// choisit une affectation 1-pour-1 pour le plan.
-func apparier(base, apport *gedcom.Gedcom) []Appariement {
+// un score et une classe, puis ajoute les ancres forcées (forces, indexée xref d'apport
+// -> xref de base — voir preparer) comme appariements Force:true, toujours inclus quel
+// que soit leur score. Renvoie tous les candidats au-dessus du seuil d'affichage plus
+// les ancres, indépendamment du niveau de fusion demandé — c'est affecterMeilleurs qui
+// filtre et choisit une affectation 1-pour-1 pour le plan (les ancres, elles, sont déjà
+// actées dans apparies par preparer avant même cette étape).
+func apparier(base, apport *gedcom.Gedcom, forces map[string]string) []Appariement {
 	index := map[string][]*gedcom.Record{}
 	for _, ind := range base.Individus() {
 		p := gedcom.Normaliser(ind.Patronyme())
@@ -223,17 +241,40 @@ func apparier(base, apport *gedcom.Gedcom) []Appariement {
 		}
 	}
 
-	// meilleur appariement provisoire par xref d'apport, pour la propagation par
-	// la parenté (deuxième passe ci-dessous)
+	// meilleur appariement provisoire par xref d'apport, pour la propagation par la
+	// parenté (deuxième passe ci-dessous) — une ancre forcée y prend toujours le pas
+	// sur un candidat scoré : c'est elle, jamais un score, qui doit propager aux
+	// enfants/conjoints d'un individu forcé, même si l'ancre n'a jamais figuré dans
+	// brut (patronymes différents, ex. une épouse rattachée par son nom de jeune fille).
 	meilleur := map[string]Appariement{}
 	for _, a := range brut {
 		if cur, ok := meilleur[a.XrefApport]; !ok || a.Score > cur.Score {
 			meilleur[a.XrefApport] = a
 		}
 	}
+	var forcees []Appariement
+	for xa, xb := range forces {
+		ind1, _ := base.Get(xb)
+		ind2, _ := apport.Get(xa)
+		a := Appariement{
+			XrefBase: xb, XrefApport: xa, Score: 100, Classe: Certaine, Force: true,
+			Criteres: []string{"ancre forcée (mode miroir)"},
+		}
+		if ind1 != nil {
+			a.NomBase = ind1.Nom()
+		}
+		if ind2 != nil {
+			a.NomApport = ind2.Nom()
+		}
+		meilleur[xa] = a
+		forcees = append(forcees, a)
+	}
 
 	var out []Appariement
 	for _, a := range brut {
+		if xb, force := forces[a.XrefApport]; force && xb == a.XrefBase {
+			continue // déjà représenté par son entrée forcée (forcees) : pas de doublon
+		}
 		ind1, _ := base.Get(a.XrefBase)
 		ind2, _ := apport.Get(a.XrefApport)
 		bonus, crit := scorerParente(base, apport, ind1, ind2, meilleur)
@@ -244,6 +285,7 @@ func apparier(base, apport *gedcom.Gedcom) []Appariement {
 			out = append(out, a)
 		}
 	}
+	out = append(out, forcees...)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Score != out[j].Score {
 			return out[i].Score > out[j].Score
@@ -640,11 +682,24 @@ func blocs(lignes []string) [][]string {
 	return out
 }
 
+// Conflit décrit un bloc mono-valué qui diverge entre baseRec et apportRec (ex. deux
+// dates de mariage différentes) : Message est le texte du rapport (voir
+// Analyse.ConflitsNonAppliques, inchangé) ; NoteLignes reformule la même information
+// en bloc "1 NOTE ..." prêt pour add_lines, pour qu'aucune information de l'apport ne
+// disparaisse silencieusement même quand le fait lui-même n'est pas retenu comme
+// valeur — utilisé uniquement par PlanForce (forcemerge écrit directement, sans étape
+// humaine de relecture avant écriture) ; Plan (automerge) l'ignore et laisse le
+// conflit à l'arbitrage humain, comme avant.
+type Conflit struct {
+	XrefBase   string
+	Message    string
+	NoteLignes []string
+}
+
 // lignesAAjouter compare, bloc par bloc, apportRec (déjà traduit selon table) à
 // baseRec : ajouts est ce qui manque à la base (tag répétable, ou tag totalement
-// absent de la base) ; conflits est ce qui diverge sur un tag mono-valué déjà présent
-// (ex. deux dates de mariage différentes) — jamais appliqué, remonté pour arbitrage.
-func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) (ajouts, conflits []string) {
+// absent de la base) ; conflits est ce qui diverge sur un tag mono-valué déjà présent.
+func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) (ajouts []string, conflits []Conflit) {
 	baseBlocs := blocs(baseRec.Lignes[1:])
 	baseSet := map[string]bool{}
 	baseTags := map[string]bool{}
@@ -668,7 +723,13 @@ func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) 
 			ajouts = append(ajouts, b...)
 			continue
 		}
-		conflits = append(conflits, fmt.Sprintf("%s : %s divergent (base garde le sien, non appliqué)", baseRec.Xref, d.Tag))
+		texte := fmt.Sprintf("forcemerge : valeur alternative de l'apport non retenue automatiquement pour %s — %s",
+			d.Tag, strings.Join(b, " / "))
+		conflits = append(conflits, Conflit{
+			XrefBase:   baseRec.Xref,
+			Message:    fmt.Sprintf("%s : %s divergent (base garde le sien, non appliqué)", baseRec.Xref, d.Tag),
+			NoteLignes: gedcom.EnligneNote(1, texte),
+		})
 	}
 	return ajouts, conflits
 }
@@ -682,20 +743,31 @@ type fusion struct {
 	apparies     map[string]string   // xref apport -> xref base, identité confirmée (contenu, individu ou famille)
 	table        map[string]string   // xref apport -> xref final (identifié, conservé ou nouveau) : couvre tout apport
 	completes    map[string][]string // xref base -> lignes complémentaires à ajouter (add_lines)
-	conflits     []string            // blocs divergents, jamais appliqués
+	conflits     []Conflit           // blocs divergents, jamais appliqués comme valeur (voir Conflit)
 	copies       []*gedcom.Record    // enregistrements d'apport traduits à insérer (add_record)
 	renumerotes  map[string]string   // xref apport -> nouveau xref, uniquement en cas de collision réelle
 	appariements []Appariement       // scoring individus complet (tous niveaux), pour le rapport
 }
 
-func preparer(base, apport *gedcom.Gedcom, niveau Niveau) *fusion {
+// preparer accepte forces (xref d'apport -> xref de base, précondition : les deux
+// doivent exister dans base/apport respectivement — non revérifié ici, c'est la
+// responsabilité de l'appelant, voir cmd_forcemerge.go) pour le mode "ancres" de
+// forcemerge ; nil pour le mode contenu+score ordinaire (Analyser/Plan).
+func preparer(base, apport *gedcom.Gedcom, niveau Niveau, forces map[string]string) *fusion {
 	apparies := apparierContenu(base, apport)
 	prisBase := map[string]bool{}
 	for _, xb := range apparies {
 		prisBase[xb] = true
 	}
 
-	scored := apparier(base, apport)
+	// Ancres forcées : actées avant tout appariement automatique, jamais remises en
+	// cause par lui (les boucles suivantes sautent déjà tout xa/xb déjà pris).
+	for xa, xb := range forces {
+		apparies[xa] = xb
+		prisBase[xb] = true
+	}
+
+	scored := apparier(base, apport, forces)
 	for xa, xb := range affecterMeilleurs(scored, niveau) {
 		if _, deja := apparies[xa]; deja || prisBase[xb] {
 			continue
@@ -774,7 +846,15 @@ func messagesNonPresents(findings []rules.Finding, deja map[string]bool) []strin
 
 // -------------------------------------------------------------------------- plan
 
-func planDepuis(f *fusion, cheminBaseAffiche string, niveau Niveau) *patch.Correctif {
+// planDepuis construit le correctif à partir de f. preserverConflits ne change jamais
+// QUELLE valeur est retenue (la base garde toujours la sienne sur un conflit) — il
+// décide seulement si la valeur alternative de l'apport est, en plus, préservée sous
+// forme de NOTE (voir Conflit.NoteLignes) plutôt que simplement listée dans le
+// rapport. false pour Plan (automerge : l'humain relit et arbitre lui-même via
+// apply) ; true pour PlanForce (forcemerge : aucune étape de relecture avant
+// écriture, donc rien de ce qui existe dans un des deux sources ne doit disparaître
+// silencieusement de dst.ged).
+func planDepuis(f *fusion, cheminBaseAffiche string, niveau Niveau, preserverConflits bool) *patch.Correctif {
 	var ops []patch.Operation
 	for _, r := range f.copies {
 		ops = append(ops, patch.Operation{Op: "add_record", Lignes: append([]string{}, r.Lignes...)})
@@ -787,17 +867,42 @@ func planDepuis(f *fusion, cheminBaseAffiche string, niveau Niveau) *patch.Corre
 	for _, xb := range xrefsCompletes {
 		ops = append(ops, patch.Operation{Op: "add_lines", Xref: xb, Lignes: append([]string{}, f.completes[xb]...)})
 	}
+	if preserverConflits {
+		for _, c := range f.conflits {
+			ops = append(ops, patch.Operation{Op: "add_lines", Xref: c.XrefBase, Lignes: append([]string{}, c.NoteLignes...)})
+		}
+	}
+
+	origine, ancres := "automerge --analyse", ""
+	if n := nAncresForcees(f.appariements); n > 0 {
+		origine = "forcemerge"
+		ancres = fmt.Sprintf(" (dont %d ancre(s) forcée(s))", n)
+	}
+	conflitsTexte := fmt.Sprintf("%d bloc(s) en conflit non appliqué(s) : à arbitrer manuellement.", len(f.conflits))
+	if preserverConflits && len(f.conflits) > 0 {
+		conflitsTexte = fmt.Sprintf("%d bloc(s) en conflit : la base garde sa valeur, l'alternative de l'apport est "+
+			"préservée en NOTE sur chaque fiche concernée.", len(f.conflits))
+	}
 	return &patch.Correctif{
 		Cible: cheminBaseAffiche,
 		Justification: fmt.Sprintf(
-			"Plan de fusion généré par `merge --analyse` (niveau %s) — réutilise %d enregistrement(s) déjà "+
-				"identique(s), complète %d fiche(s) existante(s), insère %d enregistrement(s) nouveau(x) "+
-				"(dont %d renuméroté(s) pour collision de xref). %d bloc(s) en conflit non appliqué(s) : "+
-				"à arbitrer avant `apply --write`.",
-			niveau, len(f.apparies)-len(f.completes), len(f.completes), len(f.copies),
-			len(f.renumerotes), len(f.conflits)),
+			"Plan de fusion généré par `%s` (niveau %s) — réutilise %d enregistrement(s) déjà "+
+				"identique(s)%s, complète %d fiche(s) existante(s), insère %d enregistrement(s) nouveau(x) "+
+				"(dont %d renuméroté(s) pour collision de xref). %s",
+			origine, niveau, len(f.apparies)-len(f.completes), ancres, len(f.completes), len(f.copies),
+			len(f.renumerotes), conflitsTexte),
 		Operations: ops,
 	}
+}
+
+func nAncresForcees(appariements []Appariement) int {
+	n := 0
+	for _, a := range appariements {
+		if a.Force {
+			n++
+		}
+	}
+	return n
 }
 
 // Plan construit le correctif déclaratif qui réaliserait la fusion au niveau demandé :
@@ -807,5 +912,17 @@ func planDepuis(f *fusion, cheminBaseAffiche string, niveau Niveau) *patch.Corre
 // choisi reste visible au rapport (voir Analyser) mais n'entre jamais dans ce plan —
 // c'est un jugement humain, à faire à la lecture des appariements "à examiner".
 func Plan(base, apport *gedcom.Gedcom, cheminBaseAffiche string, niveau Niveau) *patch.Correctif {
-	return planDepuis(preparer(base, apport, niveau), cheminBaseAffiche, niveau)
+	return planDepuis(preparer(base, apport, niveau, nil), cheminBaseAffiche, niveau, false)
+}
+
+// PlanForce construit le correctif de fusion comme Plan, mais en partant d'ancres
+// fournies par l'utilisateur (forces, xref d'apport -> xref de base — voir preparer)
+// plutôt que du seul contenu : ces ancres ne sont jamais remises en cause par
+// l'appariement automatique (contenu, score, parenté), qui continue de tourner autour
+// d'elles au niveau demandé — c'est le moteur du mode "ancres" de forcemerge. Un
+// conflit de valeur préserve systématiquement l'alternative de l'apport en NOTE (voir
+// planDepuis) : forcemerge écrit directement, sans étape humaine de relecture avant
+// écriture, donc rien de ce qui existe dans un des deux sources ne doit disparaître.
+func PlanForce(base, apport *gedcom.Gedcom, forces map[string]string, cheminBaseAffiche string, niveau Niveau) *patch.Correctif {
+	return planDepuis(preparer(base, apport, niveau, forces), cheminBaseAffiche, niveau, true)
 }

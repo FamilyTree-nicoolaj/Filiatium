@@ -3,6 +3,33 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Cassé
+
+- `merge` est renommé `automerge` — comportement inchangé (contenu/score,
+  n'écrit jamais de GEDCOM), seul le nom de la commande change. Tout script
+  invoquant `filiatium merge --analyse ...` doit être mis à jour.
+
+### Ajouté
+
+- Nouvelle commande `forcemerge` : fusionne directement deux GEDCOM dans un
+  nouveau fichier `dst.ged` (jamais l'un des deux fichiers source, qui restent
+  intacts) à partir de paires d'individus déclarées explicitement en argument
+  (« mode miroir », ex. `I1001:I4001`) — ces ancres ne sont jamais remises en
+  cause, mais l'appariement automatique (contenu, score, parenté) continue de
+  tourner autour d'elles, au niveau choisi par `--fusionner`. Un fait qui
+  diverge entre les deux sources garde la valeur de `srcA`, mais l'alternative
+  de `srcB` est en plus préservée en `NOTE` sur la fiche concernée : sans
+  étape humaine de relecture avant écriture, rien de ce qui existe dans l'une
+  des deux sources ne disparaît silencieusement de `dst.ged`. Même garde que
+  `fix`/`add`/`apply`/`automerge` : refuse d'écrire si la fusion introduit un
+  signalement nouveau.
+- Le moteur de `merge/` (interne, partagé par `automerge` et `forcemerge`)
+  accepte désormais des appariements forcés qui priment sur l'appariement par
+  contenu/score, et propagent aux enfants/conjoints exactement comme un
+  appariement détecté automatiquement (`Appariement.Force`).
+
 ## [1.4.0] — 2026-08-18
 
 ### Ajouté

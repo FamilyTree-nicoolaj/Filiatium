@@ -10,8 +10,8 @@ import (
 	"github.com/FamilyTree-nicoolaj/filiatium/merge"
 )
 
-const aideMerge = `
-filiatium merge --analyse <base.ged> <apport.ged> [options]
+const aideAutomerge = `
+filiatium automerge --analyse <base.ged> <apport.ged> [options]
 
 Analyse si deux GEDCOM sont fusionnables — n'écrit jamais de GEDCOM lui-même.
 Identifie les enregistrements par leur CONTENU, jamais par leurs xref (qui peuvent
@@ -24,6 +24,10 @@ complète les fiches appariées avec les lignes qui leur manquent (ex. une famil
 un export a gardé les enfants et l'autre les parents), et n'insère vraiment de
 nouveaux enregistrements que pour ce qui reste — en renumérotant seulement en cas de
 collision réelle de xref.
+
+Pour fusionner directement deux fichiers à partir de paires d'individus déclarées à
+la main, voir "filiatium forcemerge help" — automerge ne prend jamais d'ancre
+explicite, uniquement du contenu et du score.
 
 --analyse est obligatoire : c'est le seul mode disponible pour l'instant.
 
@@ -45,44 +49,44 @@ dans le plan : un bloc en conflit de valeur (ex. deux dates de mariage différen
 n'est jamais appliqué non plus, quel que soit le niveau — c'est un jugement humain.
 
 Exemples :
-  filiatium merge --analyse family.ged secondary_trees/sicard-binas-1779.ged
-  filiatium merge --analyse base.ged apport.ged --plan fusion.json --fusionner certaines
+  filiatium automerge --analyse family.ged secondary_trees/sicard-binas-1779.ged
+  filiatium automerge --analyse base.ged apport.ged --plan fusion.json --fusionner certaines
   filiatium apply fusion.json --write   # après relecture du rapport
 `
 
 func init() {
 	commandes = append(commandes, Commande{
-		Nom:           "merge",
-		Description:   "Analyser si deux GEDCOM sont fusionnables (--analyse <base.ged> <apport.ged>)",
-		AideDetaillee: aideMerge,
-		Executer:      cmdMerge,
+		Nom:           "automerge",
+		Description:   "Analyser si deux GEDCOM sont fusionnables par contenu/score (--analyse <base.ged> <apport.ged>)",
+		AideDetaillee: aideAutomerge,
+		Executer:      cmdAutomerge,
 	})
 }
 
-// flagsMerge enregistre les options de `merge` sur fs — voir flagsCheck
+// flagsAutomerge enregistre les options de `automerge` sur fs — voir flagsCheck
 // (cmd_check.go) pour pourquoi ceci est factorisé à part.
-func flagsMerge(fs *flag.FlagSet) (analyse *bool, sortiePlan, fusionner *string, sortieJSON *bool) {
-	analyse = fs.Bool("analyse", false, "analyser la fusion (seul mode disponible : merge n'écrit jamais de GEDCOM)")
+func flagsAutomerge(fs *flag.FlagSet) (analyse *bool, sortiePlan, fusionner *string, sortieJSON *bool) {
+	analyse = fs.Bool("analyse", false, "analyser la fusion (seul mode disponible : automerge n'écrit jamais de GEDCOM)")
 	sortiePlan = fs.String("plan", "", "écrire le plan de fusion déclaratif (JSON, pour `apply`) dans ce fichier")
 	fusionner = fs.String("fusionner", "certaines", "ce que le plan incorpore : identiques|certaines|probables|tout")
 	sortieJSON = fs.Bool("json", false, "rapport en JSON plutôt qu'en texte")
 	return
 }
 
-func cmdMerge(argv []string) int {
-	if aideSiDemandee("merge", argv) {
+func cmdAutomerge(argv []string) int {
+	if aideSiDemandee("automerge", argv) {
 		return 0
 	}
-	fs := flag.NewFlagSet("merge", flag.ExitOnError)
-	analyse, sortiePlan, fusionnerFlag, sortieJSON := flagsMerge(fs)
+	fs := flag.NewFlagSet("automerge", flag.ExitOnError)
+	analyse, sortiePlan, fusionnerFlag, sortieJSON := flagsAutomerge(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	if !*analyse {
-		fmt.Fprintln(os.Stderr, "usage : filiatium merge --analyse <base.ged> <apport.ged> [--plan fusion.json] [--fusionner certaines]")
+		fmt.Fprintln(os.Stderr, "usage : filiatium automerge --analyse <base.ged> <apport.ged> [--plan fusion.json] [--fusionner certaines]")
 		return 2
 	}
 	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage : filiatium merge --analyse <base.ged> <apport.ged>")
+		fmt.Fprintln(os.Stderr, "usage : filiatium automerge --analyse <base.ged> <apport.ged>")
 		return 2
 	}
 	cheminBase, cheminApport := fs.Arg(0), fs.Arg(1)
@@ -104,7 +108,7 @@ func cmdMerge(argv []string) int {
 		return 2
 	}
 
-	a := merge.Analyser(base, apport, niveau)
+	a := merge.Analyser(base, apport, niveau, nil)
 
 	if *sortiePlan != "" {
 		plan := merge.Plan(base, apport, cheminBase, niveau)
@@ -133,6 +137,9 @@ func cmdMerge(argv []string) int {
 	return 0
 }
 
+// afficherMergeTexte imprime le corps du rapport (collisions, fusion proposée,
+// appariements, contradictions, verdict) — partagé par automerge et forcemerge, qui
+// n'y ajoutent chacun que leur propre en-tête/pied (voir cmd_forcemerge.go).
 func afficherMergeTexte(cheminBase, cheminApport string, a *merge.Analyse) {
 	fmt.Printf("base   : %s\napport : %s\n\n", cheminBase, cheminApport)
 
@@ -153,8 +160,12 @@ func afficherMergeTexte(cheminBase, cheminApport string, a *merge.Analyse) {
 
 	fmt.Printf("=== appariements (%d)\n", len(a.Appariements))
 	for _, app := range a.Appariements {
-		fmt.Printf("    [%s] score %d — %s (%s) <-> %s (%s)\n",
-			app.Classe, app.Score, app.XrefBase, app.NomBase, app.XrefApport, app.NomApport)
+		marque := ""
+		if app.Force {
+			marque = " [ancre forcée]"
+		}
+		fmt.Printf("    [%s]%s score %d — %s (%s) <-> %s (%s)\n",
+			app.Classe, marque, app.Score, app.XrefBase, app.NomBase, app.XrefApport, app.NomApport)
 		for _, c := range app.Criteres {
 			fmt.Println("        + " + c)
 		}

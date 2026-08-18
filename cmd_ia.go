@@ -99,8 +99,9 @@ func afficherManifesteIA() {
 		ConseilsAgent: []string{
 			`Fournir toujours les options nécessaires (fichier, --nom, etc.) : aucune commande ne lit l'entrée standard si elles le sont — le mode guidé ("filiatium" sans argument) et l'assistant de "add" sont réservés à un usage humain en terminal.`,
 			`Utiliser --json sur chaque commande pour une sortie strictement analysable plutôt que le texte destiné à un humain.`,
-			`fix / add / apply : simulation par défaut, --write pour écrire ; toujours simuler d'abord et relire le résultat.`,
-			`merge n'écrit jamais de GEDCOM : produire un plan avec --plan, le relire, puis l'exécuter avec "apply --write". Le plan déduplique déjà le contenu identique et complète les fiches appariées ; --fusionner règle jusqu'où (identiques|certaines|probables|tout, défaut certaines) — au-delà, un rapprochement reste visible au rapport sans jamais entrer dans le plan.`,
+			`fix / add / apply / forcemerge : simulation par défaut, --write pour écrire ; toujours simuler d'abord et relire le résultat.`,
+			`automerge n'écrit jamais de GEDCOM : produire un plan avec --plan, le relire, puis l'exécuter avec "apply --write". Le plan déduplique déjà le contenu identique et complète les fiches appariées ; --fusionner règle jusqu'où (identiques|certaines|probables|tout, défaut certaines) — au-delà, un rapprochement reste visible au rapport sans jamais entrer dans le plan.`,
+			`forcemerge fusionne directement deux GEDCOM vers un nouveau fichier dst.ged (jamais l'une des deux sources, qui restent intactes), à partir de paires d'individus "xrefA:xrefB" déclarées explicitement (mode miroir) — --fusionner règle jusqu'où l'appariement automatique complète ces ancres. Un conflit de valeur garde la valeur de srcA mais préserve celle de srcB en NOTE : rien n'est jamais perdu silencieusement.`,
 			`Les seuils de réalisme (check, catégorie realisme) sont réglables via un fichier "filiatium.json" posé à côté du GEDCOM.`,
 		},
 	}
@@ -154,9 +155,9 @@ func commandeIAPour(c Commande) commandeIA {
 		ci.Positionnels = []positionnelIA{
 			{Nom: "correctif.json", Description: `fichier de correctif déclaratif ; la cible .ged est indiquée dans son champ "cible"`, Obligatoire: true},
 		}
-	case "merge":
-		flagsMerge(fs)
-		ci.Usage = "filiatium merge --analyse <base.ged> <apport.ged> [options]"
+	case "automerge":
+		flagsAutomerge(fs)
+		ci.Usage = "filiatium automerge --analyse <base.ged> <apport.ged> [options]"
 		ci.Positionnels = []positionnelIA{
 			{Nom: "base.ged", Description: "arbre de référence", Obligatoire: true},
 			{Nom: "apport.ged", Description: "arbre à analyser en vue d'une fusion dans base.ged", Obligatoire: true},
@@ -166,6 +167,15 @@ func commandeIAPour(c Commande) commandeIA {
 		ci.Usage = "filiatium renumber <fichier.ged> (--source <xref> | --decalage <n> | --prefixe <lettre>) [options]  OU  filiatium renumber --depuis-table <table.json> [options]"
 		ci.Positionnels = []positionnelIA{
 			{Nom: "fichier.ged", Description: "chemin du GEDCOM à renuméroter — requis avec --source/--decalage/--prefixe, absent en mode --depuis-table", Obligatoire: false},
+		}
+	case "forcemerge":
+		flagsForcemerge(fs)
+		ci.Usage = "filiatium forcemerge <dst.ged> <srcA.ged> <srcB.ged> <xrefA1:xrefB1> [xrefA2:xrefB2 ...] [options]"
+		ci.Positionnels = []positionnelIA{
+			{Nom: "dst.ged", Description: "fichier de sortie — jamais srcA.ged ni srcB.ged, qui restent tous deux intacts", Obligatoire: true},
+			{Nom: "srcA.ged", Description: "premier arbre source", Obligatoire: true},
+			{Nom: "srcB.ged", Description: "second arbre source", Obligatoire: true},
+			{Nom: "xrefA:xrefB", Description: "au moins une paire d'ancres \"xref de srcA:xref de srcB\" désignant le même individu (mode miroir)", Obligatoire: true},
 		}
 	}
 

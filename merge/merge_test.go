@@ -43,7 +43,7 @@ func TestApparieHomonymeCertain(t *testing.T) {
 	apport := charger(t, entete+
 		"0 @B0001@ INDI\n1 NAME Jean /Untel/\n1 SEX M\n1 BIRT\n2 DATE 1805\n"+pied)
 
-	appariements := apparier(base, apport)
+	appariements := apparier(base, apport, nil)
 	if len(appariements) != 1 {
 		t.Fatalf("appariements = %+v", appariements)
 	}
@@ -59,7 +59,7 @@ func TestApparieHomonymeCertain(t *testing.T) {
 func TestAucunAppariementPatronymeDifferent(t *testing.T) {
 	base := charger(t, entete+"0 @I0001@ INDI\n1 NAME Jean /Untel/\n"+pied)
 	apport := charger(t, entete+"0 @B0001@ INDI\n1 NAME Jean /Autrechose/\n"+pied)
-	if a := apparier(base, apport); len(a) != 0 {
+	if a := apparier(base, apport, nil); len(a) != 0 {
 		t.Errorf("appariement inattendu : %+v", a)
 	}
 }
@@ -69,7 +69,7 @@ func TestConflitSexeDifferent(t *testing.T) {
 		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 SEX M\n1 BIRT\n2 DATE 1805\n"+pied)
 	apport := charger(t, entete+
 		"0 @B0001@ INDI\n1 NAME Jean /Untel/\n1 SEX F\n1 BIRT\n2 DATE 1805\n"+pied)
-	appariements := apparier(base, apport)
+	appariements := apparier(base, apport, nil)
 	if len(appariements) != 1 {
 		t.Fatalf("appariements = %+v", appariements)
 	}
@@ -90,7 +90,7 @@ func TestScoreConflitsElimineLeRapprochementAbsurde(t *testing.T) {
 	apport := charger(t, entete+
 		"0 @B0001@ INDI\n1 NAME Tim /Le Gougne/\n1 SEX M\n1 BIRT\n2 DATE 2018\n"+pied)
 
-	if a := apparier(base, apport); len(a) != 0 {
+	if a := apparier(base, apport, nil); len(a) != 0 {
 		t.Errorf("rapprochement absurde non éliminé : %+v", a)
 	}
 }
@@ -112,7 +112,7 @@ func TestBonusParente(t *testing.T) {
 	// Pierre(base) est aussi candidat face à Paul(apport) — même patronyme, prénom
 	// différent — d'où la recherche par (XrefBase, XrefApport) précis plutôt que par
 	// XrefApport seul.
-	appariements := apparier(base, apport)
+	appariements := apparier(base, apport, nil)
 	var paul *Appariement
 	for i := range appariements {
 		if appariements[i].XrefBase == "I0002" && appariements[i].XrefApport == "B0002" {
@@ -141,7 +141,7 @@ func TestFusionReutiliseLesEnregistrementsIdentiques(t *testing.T) {
 		"0 @S0099@ SOUR\n1 TITL Recensement 1911\n"+ // même contenu, xref différent
 		"0 @B0001@ INDI\n1 NAME Sans /Rapport/\n"+pied)
 
-	f := preparer(base, apport, NiveauCertaines)
+	f := preparer(base, apport, NiveauCertaines, nil)
 	if xb, ok := f.apparies["S0099"]; !ok || xb != "S0001" {
 		t.Errorf("S0099 non identifié à S0001 par contenu : %+v", f.apparies)
 	}
@@ -173,7 +173,7 @@ func TestFusionCompleteUneFamille(t *testing.T) {
 		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 WIFE @I0002@\n1 CHIL @I0003@\n1 CHIL @A4@\n"+
 		pied)
 
-	f := preparer(base, apport, NiveauCertaines)
+	f := preparer(base, apport, NiveauCertaines, nil)
 	if xb, ok := f.apparies["F0001"]; !ok || xb != "F0001" {
 		t.Fatalf("famille d'apport non appariée à celle de la base : %+v", f.apparies)
 	}
@@ -204,7 +204,7 @@ func TestFusionFamilleSansConjointCoteApport(t *testing.T) {
 		"0 @F0002@ FAM\n1 CHIL @I0012@\n"+
 		pied)
 
-	f := preparer(base, apport, NiveauCertaines)
+	f := preparer(base, apport, NiveauCertaines, nil)
 	if xb, ok := f.apparies["F0002"]; !ok || xb != "F0002" {
 		t.Fatalf("famille (sans conjoint côté apport) non appariée : %+v", f.apparies)
 	}
@@ -223,7 +223,7 @@ func TestFusionRenumeroteSeulementEnCasDeCollision(t *testing.T) {
 		"0 @I0099@ INDI\n1 NAME Libre /Xref/\n"+ // xref libre côté base
 		pied)
 
-	f := preparer(base, apport, NiveauCertaines)
+	f := preparer(base, apport, NiveauCertaines, nil)
 	if len(f.copies) != 2 {
 		t.Fatalf("copies = %d, voulu 2 : %+v", len(f.copies), f.copies)
 	}
@@ -250,7 +250,7 @@ func TestSignaturesDupliqueesInterneNeCassentRien(t *testing.T) {
 		"0 @A2@ INDI\n1 NAME Bob /Voisin/\n1 NOTE @M2@\n"+
 		pied)
 
-	f := preparer(base, apport, NiveauCertaines)
+	f := preparer(base, apport, NiveauCertaines, nil)
 	notesAppariees := 0
 	for x, xb := range f.apparies {
 		if x == "M1" || x == "M2" {
@@ -287,7 +287,7 @@ func TestBlocEnConflitNonApplique(t *testing.T) {
 		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 WIFE @I0002@\n1 MARR\n2 DATE 5 MAY 1921\n"+ // date de mariage différente
 		pied)
 
-	f := preparer(base, apport, NiveauCertaines)
+	f := preparer(base, apport, NiveauCertaines, nil)
 	if len(f.completes) != 0 {
 		t.Errorf("aucune complétion attendue (bloc en conflit, pas d'ajout automatique) : %+v", f.completes)
 	}
@@ -311,7 +311,7 @@ func TestNiveauIdentiquesNeFusionnePasLesFamilles(t *testing.T) {
 		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 WIFE @I0002@\n1 CHIL @I0003@\n1 CHIL @A4@\n"+
 		pied)
 
-	f := preparer(base, apport, NiveauIdentiques)
+	f := preparer(base, apport, NiveauIdentiques, nil)
 	if _, ok := f.apparies["F0001"]; ok {
 		t.Errorf("famille appariée alors que le niveau est \"identiques\" : %+v", f.apparies)
 	}
@@ -375,11 +375,153 @@ func TestPlanEstApplicable(t *testing.T) {
 func TestVerdictFusionnableTelQuel(t *testing.T) {
 	base := charger(t, entete+"0 @I0001@ INDI\n1 NAME Jean /Untel/\n"+pied)
 	apport := charger(t, entete+"0 @A0001@ INDI\n1 NAME Sans /Rapport/\n"+pied)
-	a := Analyser(base, apport, NiveauCertaines)
+	a := Analyser(base, apport, NiveauCertaines, nil)
 	if a.Renumerotes != 0 {
 		t.Errorf("renumérotations inattendues : %d", a.Renumerotes)
 	}
 	if len(a.NouveauxApresMerge) != 0 {
 		t.Errorf("contradictions inattendues : %v", a.NouveauxApresMerge)
+	}
+}
+
+// ------------------------------------------------------------- ancres forcées (forcemerge)
+
+// TestApparierAncreForceeSansDoublon vérifie qu'une ancre forcée dont la paire est
+// AUSSI trouvée naturellement par score (même patronyme/prénom) n'apparaît qu'une
+// seule fois dans le résultat — pas une entrée Force:true et une entrée scorée
+// distincte pour la même paire (I1001, régression constatée en test manuel).
+func TestApparierAncreForceeSansDoublon(t *testing.T) {
+	base := charger(t, entete+"0 @I0001@ INDI\n1 NAME Jean /Untel/\n"+pied)
+	apport := charger(t, entete+"0 @X0001@ INDI\n1 NAME Jean /Untel/\n"+pied)
+	forces := map[string]string{"X0001": "I0001"}
+
+	out := apparier(base, apport, forces)
+	n := 0
+	for _, a := range out {
+		if a.XrefBase == "I0001" && a.XrefApport == "X0001" {
+			n++
+			if !a.Force {
+				t.Errorf("entrée non marquée Force : %+v", a)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("paire (I0001, X0001) apparaît %d fois, voulu 1 : %+v", n, out)
+	}
+}
+
+// TestApparierAncrePropageAuxEnfants vérifie que la propagation par parenté
+// (scorerParente) profite d'une ancre forcée même quand l'ancre elle-même n'a jamais
+// figuré parmi les candidats scorés (patronymes différents ici, ex. un nom d'état
+// civil qui diverge d'un export à l'autre) : le score de l'enfant, insuffisant seul
+// pour "certaine", doit franchir le seuil grâce au bonus de parenté.
+func TestApparierAncrePropageAuxEnfants(t *testing.T) {
+	base := charger(t, entete+
+		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 FAMS @F0001@\n"+
+		"0 @I0002@ INDI\n1 NAME Marie /Autre/\n1 FAMS @F0001@\n"+
+		"0 @I0003@ INDI\n1 NAME Paul /Untel/\n1 FAMC @F0001@\n"+
+		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 WIFE @I0002@\n1 CHIL @I0003@\n"+
+		pied)
+	apport := charger(t, entete+
+		"0 @X1001@ INDI\n1 NAME Jean /Dupont/\n1 FAMS @X2001@\n"+ // patronyme différent exprès
+		"0 @X1002@ INDI\n1 NAME Marie /Autre/\n1 FAMS @X2001@\n"+
+		"0 @X1003@ INDI\n1 NAME Paul /Untel/\n1 FAMC @X2001@\n"+
+		"0 @X2001@ FAM\n1 HUSB @X1001@\n1 WIFE @X1002@\n1 CHIL @X1003@\n"+
+		pied)
+	forces := map[string]string{"X1001": "I0001"} // seul le père est forcé
+
+	out := apparier(base, apport, forces)
+	var enfant *Appariement
+	for i, a := range out {
+		if a.XrefBase == "I0003" && a.XrefApport == "X1003" {
+			enfant = &out[i]
+		}
+	}
+	if enfant == nil {
+		t.Fatalf("paire (I0003, X1003) absente du résultat : %+v", out)
+	}
+	if enfant.Classe != Certaine {
+		t.Errorf("classe = %s, score = %d, voulu certaine (bonus de parenté depuis l'ancre)", enfant.Classe, enfant.Score)
+	}
+	trouveCritere := false
+	for _, c := range enfant.Criteres {
+		if strings.Contains(c, "père déjà apparié") {
+			trouveCritere = true
+		}
+	}
+	if !trouveCritere {
+		t.Errorf("critère \"père déjà apparié\" absent : %+v", enfant.Criteres)
+	}
+}
+
+// TestPreparerAncreForceeJamaisRemplacee vérifie qu'une ancre forcée reste dans
+// apparies même au niveau le plus bas (NiveauIdentiques, qui ne fusionne sinon que le
+// contenu octet-identique) — une ancre n'est jamais soumise au niveau de fusion.
+func TestPreparerAncreForceeJamaisRemplacee(t *testing.T) {
+	base := charger(t, entete+"0 @I0001@ INDI\n1 NAME Jean /Untel/\n"+pied)
+	apport := charger(t, entete+"0 @X0001@ INDI\n1 NAME Autre /Nom/\n"+pied) // aucun rapport de contenu ni de score
+	forces := map[string]string{"X0001": "I0001"}
+
+	f := preparer(base, apport, NiveauIdentiques, forces)
+	if got := f.apparies["X0001"]; got != "I0001" {
+		t.Errorf("apparies[X0001] = %q, voulu I0001", got)
+	}
+}
+
+// TestPlanForcePreserveConflitEnNote vérifie que PlanForce (forcemerge) ne perd
+// jamais un fait qui diverge entre les deux sources : la base garde sa valeur, mais
+// l'alternative de l'apport doit se retrouver en NOTE sur la fiche. Plan (automerge),
+// lui, ne doit PAS ajouter cette NOTE — son contrat existant (rapporter le conflit,
+// laisser l'arbitrage à l'humain via apply) ne change pas.
+func TestPlanForcePreserveConflitEnNote(t *testing.T) {
+	base := charger(t, entete+
+		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 FAMS @F0001@\n"+
+		"0 @I0002@ INDI\n1 NAME Marie /Autre/\n1 FAMS @F0001@\n"+
+		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 WIFE @I0002@\n1 MARR\n2 DATE 1 JAN 1920\n"+
+		pied)
+	apport := charger(t, entete+
+		"0 @X0001@ INDI\n1 NAME Jean /Untel/\n1 FAMS @X0003@\n"+
+		"0 @X0002@ INDI\n1 NAME Marie /Autre/\n1 FAMS @X0003@\n"+
+		"0 @X0003@ FAM\n1 HUSB @X0001@\n1 WIFE @X0002@\n1 MARR\n2 DATE 5 MAY 1921\n"+
+		pied)
+	forces := map[string]string{"X0001": "I0001", "X0002": "I0002"}
+
+	planForce := PlanForce(base, apport, forces, "", NiveauCertaines)
+	noteTrouvee := false
+	for _, op := range planForce.Operations {
+		if op.Op == "add_lines" && op.Xref == "F0001" {
+			for _, l := range op.Lignes {
+				if strings.Contains(l, "5 MAY 1921") {
+					noteTrouvee = true
+				}
+			}
+		}
+	}
+	if !noteTrouvee {
+		t.Errorf("valeur alternative (5 MAY 1921) absente des opérations de PlanForce : %+v", planForce.Operations)
+	}
+
+	// Sans ancre, seul un niveau qui accepte au moins "probable" apparie X0001/X0002 à
+	// I0001/I0002 (même patronyme+prénom mais aucune date de naissance -> score 65) :
+	// NiveauProbables, pour que le conflit soit réellement détecté et pas juste absent
+	// faute d'appariement — sinon l'assertion "pas de NOTE" serait vraie pour la
+	// mauvaise raison.
+	base2 := charger(t, entete+
+		"0 @I0001@ INDI\n1 NAME Jean /Untel/\n1 FAMS @F0001@\n"+
+		"0 @I0002@ INDI\n1 NAME Marie /Autre/\n1 FAMS @F0001@\n"+
+		"0 @F0001@ FAM\n1 HUSB @I0001@\n1 WIFE @I0002@\n1 MARR\n2 DATE 1 JAN 1920\n"+
+		pied)
+	a := Analyser(base2, apport, NiveauProbables, nil)
+	if len(a.ConflitsNonAppliques) != 1 {
+		t.Fatalf("conflit non détecté par l'appariement automatique (probable) : %+v", a)
+	}
+
+	planAuto := Plan(base2, apport, "", NiveauProbables)
+	for _, op := range planAuto.Operations {
+		for _, l := range op.Lignes {
+			if strings.Contains(l, "5 MAY 1921") {
+				t.Errorf("automerge (Plan) ne doit jamais préserver un conflit en NOTE : %+v", op)
+			}
+		}
 	}
 }

@@ -45,7 +45,7 @@ roundtrip: build ## Vérifie que charger+réécrire ne change pas un octet
 
 fusion: build ## Analyse la fusion de chaque arbre secondaire avec l'arbre principal
 	@for a in "$(CORPUS)"/secondary_trees/*.ged; do \
-	  echo "=== $$(basename $$a)"; ./$(BINAIRE) merge --analyse "$(GED)" "$$a" | tail -3; echo; \
+	  echo "=== $$(basename $$a)"; ./$(BINAIRE) automerge --analyse "$(GED)" "$$a" | tail -3; echo; \
 	done
 
 distribution: ## Compile pour macOS (+ binaire universel), Linux et Windows

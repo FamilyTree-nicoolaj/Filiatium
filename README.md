@@ -3,7 +3,8 @@
 Outil unique de validation et correction de GEDCOM 5.5.1 (compatibilité Gramps) :
 vérifier, corriger ce qui est mécaniquement sûr, ajouter un individu en câblant tous
 ses liens de parenté sans ambiguïté, appliquer des correctifs déclaratifs, analyser
-si deux arbres sont fusionnables, et renuméroter proprement un GEDCOM.
+si deux arbres sont fusionnables (ou les fusionner directement à partir de paires
+d'individus déclarées), et renuméroter proprement un GEDCOM.
 
 Écrit en Go, zéro dépendance externe (stdlib seule), binaire statique.
 
@@ -123,7 +124,7 @@ filiatium apply correctif.json --write
 `cible` est résolu relativement au dossier du fichier de correctif, pas au
 répertoire courant. Opérations disponibles : `set_event_date`, `add_citation`,
 `add_fams`, `add_famc`, `add_lines`, `add_source`, `add_individual`, `add_family`,
-`add_record` (enregistrement entier, utilisé par `merge`), `set_line`,
+`add_record` (enregistrement entier, utilisé par `automerge`/`forcemerge`), `set_line`,
 `remove_line`, `touch_chan`.
 
 `add_lines` insère des lignes neuves dans une fiche **déjà existante**, juste
@@ -136,7 +137,9 @@ avait pas du tout.
 {"op": "add_lines", "xref": "I0042", "lignes": ["1 BIRT", "2 DATE 12 MAR 1805"]}
 ```
 
-### `merge --analyse` — deux GEDCOM sont-ils fusionnables ?
+### `automerge --analyse` — deux GEDCOM sont-ils fusionnables ?
+
+> Rétro-incompatible depuis la 2.0.0 : cette commande s'appelait `merge`.
 
 N'écrit jamais de GEDCOM. Identifie les enregistrements par leur **contenu**,
 jamais par leurs xref (qui peuvent coïncider par accident — deux exports d'une
@@ -146,8 +149,8 @@ leurs critères et conflits, contradictions qu'introduirait la fusion) et,
 optionnellement, un plan de fusion au format `apply` :
 
 ```bash
-filiatium merge --analyse family.ged secondary_trees/sicard-binas-1779.ged
-filiatium merge --analyse base.ged apport.ged --plan fusion.json --fusionner certaines
+filiatium automerge --analyse family.ged secondary_trees/sicard-binas-1779.ged
+filiatium automerge --analyse base.ged apport.ged --plan fusion.json --fusionner certaines
 filiatium apply fusion.json --write   # après relecture du rapport
 ```
 
@@ -166,7 +169,35 @@ dates de mariage différentes), reste visible au rapport mais n'entre jamais dan
 le plan : dédupliquer du contenu identique ou compléter une fiche avec ce qui lui
 manque n'est pas un arbitrage (rien n'est choisi ni perdu) ; fusionner deux fiches
 qui se *ressemblent* au-delà de `certaines`, ou trancher une valeur qui diverge,
-reste un jugement humain, à faire à la lecture du rapport.
+reste un jugement humain, à faire à la lecture du rapport. Pour fusionner
+directement à partir de paires que vous déclarez vous-même, voir `forcemerge`
+ci-dessous.
+
+### `forcemerge` — fusion directe à partir de paires déclarées (mode miroir)
+
+Contrairement à `automerge`, `forcemerge` **écrit directement** un nouveau fichier
+`dst.ged` — jamais l'un des deux fichiers source, qui restent tous les deux
+intacts sur disque. Vous déclarez vous-même, en argument, quels individus de
+`srcA.ged` et de `srcB.ged` désignent la même personne (« mode miroir ») ; ces
+ancres ne sont jamais remises en cause, mais l'appariement automatique (contenu,
+score, parenté) continue de tourner **autour** d'elles — une ancre sur des parents
+aide à retrouver leurs enfants, exactement comme `automerge` le fait déjà entre
+individus détectés automatiquement.
+
+```bash
+filiatium forcemerge dst.ged srcA.ged srcB.ged I1001:I4001 I0203:I4058           # simulation
+filiatium forcemerge dst.ged srcA.ged srcB.ged I1001:I4001 I0203:I4058 --write
+```
+
+Chaque `xrefA:xrefB` signifie que `xrefA` (dans `srcA`) et `xrefB` (dans `srcB`)
+sont la même personne. `--fusionner` règle jusqu'où l'automatique complète ces
+ancres (mêmes niveaux qu'`automerge`, défaut `certaines`) ; individus et familles
+sont fusionnés. Un fait qui diverge entre les deux sources (ex. deux dates de
+mariage différentes) garde la valeur de `srcA`, mais l'alternative de `srcB` est
+en plus **préservée en NOTE** sur la fiche concernée — sans étape humaine de
+relecture avant écriture, aucune information des deux sources ne doit disparaître
+silencieusement de `dst.ged`. Même garde que `fix`/`add`/`apply`/`automerge` :
+refuse d'écrire si la fusion introduit un signalement nouveau (`filiatium check`).
 
 ### `renumber` — renumérotation complète
 
@@ -186,11 +217,11 @@ filiatium renumber secondary.ged --prefixe Z --write               # I0001 -> ZI
   fichier, pour que chaque INDI/FAM change bien de xref.
 - `--decalage <n>` / `--prefixe <lettre>` : fonctions pures par-enregistrement
   (pas de parcours), pour **namespacer un arbre secondaire** avant de
-  l'analyser avec `merge --analyse`, plutôt que de laisser `merge` renumérer
-  au cas par cas sur collision réelle.
+  l'analyser avec `automerge --analyse`, plutôt que de laisser `automerge`
+  renumérer au cas par cas sur collision réelle.
 
 `--table <fichier>` écrit la correspondance ancien→nouveau xref en JSON,
-indépendamment de `--write` (comme `--plan` sur `merge`). Une renumérotation
+indépendamment de `--write` (comme `--plan` sur `automerge`). Une renumérotation
 est une relabelisation bijective pure : elle ne change jamais ce que `check`
 signale, seuls les xref cités dans les messages changent.
 
@@ -228,8 +259,8 @@ succès, `1` signalements présents ou écriture refusée (auto-vérification),
 
 Aucune commande ne lit l'entrée standard **si les options nécessaires sont
 fournies** : `check`, `fix` (sans `--interactif`), `add` (avec `--nom` ou
-`--fichier`), `apply`, `merge`, `renumber` sont entièrement pilotables par
-arguments, sans
+`--fichier`), `apply`, `automerge`, `forcemerge`, `renumber` sont entièrement
+pilotables par arguments, sans
 jamais attendre de saisie. Seuls trois cas lisent stdin : `filiatium` sans
 argument (menu guidé), `add` sans `--nom`/`--fichier` (assistant), et
 `fix --interactif` — à réserver à un usage humain en terminal ; un script ou un
@@ -259,7 +290,7 @@ config/   seuils réglables (config.Defauts / config.Charger)
 fix/      détection + application des 3 corrections mécaniques
 add/      ajout d'individu auto-vérifié
 patch/    correctifs déclaratifs JSON (préconditions + opérations)
-merge/    analyse de fusion (identité par contenu, appariement, plan dédupliquant)
+merge/    moteur de fusion (identité par contenu/score/ancres) — automerge et forcemerge
 renumber/ renumérotation complète des xref INDI/FAM (source, décalage, préfixe)
 cmd_*.go  sous-commandes CLI ; main.go/interactif.go l'aiguillage et le menu guidé
 scripts/  parite.sh, roundtrip.sh — recette de non-régression contre le corpus réel
@@ -269,10 +300,14 @@ scripts/  parite.sh, roundtrip.sh — recette de non-régression contre le corpu
 
 GEDCOM 7, ANSEL, suppression automatique des pointeurs morts, interface graphique
 — voir le plan de conception pour le raisonnement détaillé de chaque exclusion.
-`merge` déduplique automatiquement le contenu octet-identique et complète les
+`automerge` déduplique automatiquement le contenu octet-identique et complète les
 fiches appariées avec certitude (aucune information choisie ni perdue), mais ne
 fusionne jamais deux fiches qui se *ressemblent* seulement, ni ne tranche un bloc
-en conflit de valeur : ça reste un jugement humain.
+en conflit de valeur, et n'écrit jamais de GEDCOM lui-même : ça reste un jugement
+humain, via `apply`. `forcemerge` est l'exception assumée à ce principe : c'est
+l'utilisateur, jamais une heuristique de ressemblance, qui déclare les paires à
+fusionner (mode miroir) — forcemerge écrit alors directement, mais ne perd pour
+autant aucune information divergente (préservée en NOTE, voir plus haut).
 
 ## Licence
 
