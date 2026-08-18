@@ -2,8 +2,8 @@
 
 Outil unique de validation et correction de GEDCOM 5.5.1 (compatibilité Gramps) :
 vérifier, corriger ce qui est mécaniquement sûr, ajouter un individu en câblant tous
-ses liens de parenté sans ambiguïté, appliquer des correctifs déclaratifs, et
-analyser si deux arbres sont fusionnables.
+ses liens de parenté sans ambiguïté, appliquer des correctifs déclaratifs, analyser
+si deux arbres sont fusionnables, et renuméroter proprement un GEDCOM.
 
 Écrit en Go, zéro dépendance externe (stdlib seule), binaire statique.
 
@@ -168,6 +168,46 @@ manque n'est pas un arbitrage (rien n'est choisi ni perdu) ; fusionner deux fich
 qui se *ressemblent* au-delà de `certaines`, ou trancher une valeur qui diverge,
 reste un jugement humain, à faire à la lecture du rapport.
 
+### `renumber` — renumérotation complète
+
+Renumérote tous les xref INDI/FAM d'un GEDCOM (jamais SOUR/NOTE/OBJE/SUBM/REPO,
+qui gardent les leurs), selon une des trois stratégies suivantes :
+
+```bash
+filiatium renumber family.ged --source I0001 --table renum.json  # simulation
+filiatium renumber family.ged --source I0001 --table renum.json --write
+filiatium renumber secondary.ged --decalage 5000 --write          # I0001 -> I5001
+filiatium renumber secondary.ged --prefixe Z --write               # I0001 -> ZI0001
+```
+
+- `--source <xref>` : **numérotation cohérente**, en repartant de l'individu
+  choisi — parcours en largeur (conjoints, enfants, parents, toutes pédigrées
+  FAMC) ; toute composante déconnectée est ensuite balayée à son tour, en ordre
+  fichier, pour que chaque INDI/FAM change bien de xref.
+- `--decalage <n>` / `--prefixe <lettre>` : fonctions pures par-enregistrement
+  (pas de parcours), pour **namespacer un arbre secondaire** avant de
+  l'analyser avec `merge --analyse`, plutôt que de laisser `merge` renumérer
+  au cas par cas sur collision réelle.
+
+`--table <fichier>` écrit la correspondance ancien→nouveau xref en JSON,
+indépendamment de `--write` (comme `--plan` sur `merge`). Une renumérotation
+est une relabelisation bijective pure : elle ne change jamais ce que `check`
+signale, seuls les xref cités dans les messages changent.
+
+Mise à jour des notes de recherche, en étape **séparée et explicite** — jamais
+embarquée dans le `--write` qui renumérote le `.ged` :
+
+```bash
+filiatium renumber --depuis-table renum.json                    # simulation, dossier = celui du .ged
+filiatium renumber --depuis-table renum.json --notes ~/Documents/Genealogie --write
+```
+
+Rejoue la table sur les `*.md` du dossier (motif non récursif) : chaque
+occurrence en **mot entier** d'un ancien xref (`I0517`, `[I0517]`, ou cité
+`@F0271@` dans une ligne GEDCOM reproduite) est remplacée par le nouveau —
+jamais un motif générique, seulement les xref réellement issus de cette
+renumérotation précise.
+
 ## Usage par un script ou un agent
 
 ```bash
@@ -188,7 +228,8 @@ succès, `1` signalements présents ou écriture refusée (auto-vérification),
 
 Aucune commande ne lit l'entrée standard **si les options nécessaires sont
 fournies** : `check`, `fix` (sans `--interactif`), `add` (avec `--nom` ou
-`--fichier`), `apply`, `merge` sont entièrement pilotables par arguments, sans
+`--fichier`), `apply`, `merge`, `renumber` sont entièrement pilotables par
+arguments, sans
 jamais attendre de saisie. Seuls trois cas lisent stdin : `filiatium` sans
 argument (menu guidé), `add` sans `--nom`/`--fichier` (assistant), et
 `fix --interactif` — à réserver à un usage humain en terminal ; un script ou un
@@ -219,6 +260,7 @@ fix/      détection + application des 3 corrections mécaniques
 add/      ajout d'individu auto-vérifié
 patch/    correctifs déclaratifs JSON (préconditions + opérations)
 merge/    analyse de fusion (identité par contenu, appariement, plan dédupliquant)
+renumber/ renumérotation complète des xref INDI/FAM (source, décalage, préfixe)
 cmd_*.go  sous-commandes CLI ; main.go/interactif.go l'aiguillage et le menu guidé
 scripts/  parite.sh, roundtrip.sh — recette de non-régression contre le corpus réel
 ```

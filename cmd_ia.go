@@ -161,6 +161,12 @@ func commandeIAPour(c Commande) commandeIA {
 			{Nom: "base.ged", Description: "arbre de référence", Obligatoire: true},
 			{Nom: "apport.ged", Description: "arbre à analyser en vue d'une fusion dans base.ged", Obligatoire: true},
 		}
+	case "renumber":
+		flagsRenumber(fs)
+		ci.Usage = "filiatium renumber <fichier.ged> (--source <xref> | --decalage <n> | --prefixe <lettre>) [options]  OU  filiatium renumber --depuis-table <table.json> [options]"
+		ci.Positionnels = []positionnelIA{
+			{Nom: "fichier.ged", Description: "chemin du GEDCOM à renuméroter — requis avec --source/--decalage/--prefixe, absent en mode --depuis-table", Obligatoire: false},
+		}
 	}
 
 	fs.VisitAll(func(fl *flag.Flag) {

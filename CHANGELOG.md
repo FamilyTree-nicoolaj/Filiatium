@@ -3,6 +3,23 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Non publié]
+
+### Ajouté
+
+- Nouvelle commande `renumber` : renumérotation complète des xref INDI/FAM
+  d'un GEDCOM (jamais SOUR/NOTE/OBJE/SUBM/REPO, qui gardent les leurs), selon
+  trois stratégies au choix — `--source <xref>` (numérotation cohérente par
+  parcours en largeur depuis un individu racine, avec balayage des composantes
+  déconnectées), `--decalage <n>` (décale tous les numéros, ex. `+5000`), ou
+  `--prefixe <lettre>` (ajoute une lettre devant chaque xref existant, ex.
+  `I0001` → `ZI0001`) — utile pour namespacer un arbre secondaire avant de
+  l'analyser avec `merge --analyse`.
+- `renumber --table` écrit la correspondance ancien→nouveau xref en JSON ;
+  `renumber --depuis-table` la rejoue ensuite, en étape séparée et explicite,
+  sur les fichiers `.md` de recherche qui citent ces xref en texte libre
+  (`--notes <dossier>`, défaut : celui du `.ged`).
+
 ## [1.3.0] — 2026-08-18
 
 ### Modifié

@@ -133,10 +133,10 @@ func Analyser(base, apport *gedcom.Gedcom, niveau Niveau) *Analyse {
 	collisions := detecterCollisions(base, apport)
 
 	seuils := config.Defauts()
-	apportTraduit := reecrire(apport, f.table)
+	apportTraduit := apport.Retraduire(f.table)
 	avant := unionMessages(toutesRegles(base, seuils), toutesRegles(apportTraduit, seuils))
 
-	fusionSimulee := reecrire(base, nil)
+	fusionSimulee := base.Retraduire(nil)
 	_ = planDepuis(f, "", niveau).Appliquer(fusionSimulee) // invariants de preparer/allouer garantissent l'applicabilité
 	apres := toutesRegles(fusionSimulee, seuils)
 	nouveaux := messagesNonPresents(apres, avant)
@@ -403,22 +403,6 @@ func signature(r *gedcom.Record) string {
 	return strings.Join(masquees, "\n")
 }
 
-// traduire réécrit chaque pointeur "@XREF@" de lignes selon table ; un xref absent de
-// table reste inchangé.
-func traduire(lignes []string, table map[string]string) []string {
-	out := make([]string, len(lignes))
-	for i, l := range lignes {
-		out[i] = pointeurRe.ReplaceAllStringFunc(l, func(m string) string {
-			x := m[1 : len(m)-1]
-			if nv, ok := table[x]; ok {
-				return "@" + nv + "@"
-			}
-			return m
-		})
-	}
-	return out
-}
-
 type cleSignature struct{ tag, sig string }
 
 func grouperParSignature(g *gedcom.Gedcom) map[cleSignature][]*gedcom.Record {
@@ -468,7 +452,7 @@ func apparierContenu(base, apport *gedcom.Gedcom) map[string]string {
 
 	table := map[string]string{}
 	for _, c := range candidats {
-		traduites := traduire(c.apport.Lignes[1:], tentative)
+		traduites := gedcom.TraduireXrefs(c.apport.Lignes[1:], tentative)
 		if strings.Join(traduites, "\n") == strings.Join(c.base.Lignes[1:], "\n") {
 			table[c.apport.Xref] = c.base.Xref
 		}
@@ -626,17 +610,6 @@ func allouer(base, apport *gedcom.Gedcom, apparies map[string]string) (table, re
 	return table, renumerotes
 }
 
-// reecrire renvoie une copie de g dont tous les pointeurs (y compris la ligne 0, donc
-// le xref propre de chaque enregistrement) sont réécrits selon table. table nil ou
-// vide produit une copie profonde inchangée.
-func reecrire(g *gedcom.Gedcom, table map[string]string) *gedcom.Gedcom {
-	records := make([]*gedcom.Record, len(g.Records))
-	for i, r := range g.Records {
-		records[i] = gedcom.NewRecord(traduire(r.Lignes, table))
-	}
-	return &gedcom.Gedcom{Records: records}
-}
-
 // -------------------------------------------------------- union des lignes complémentaires
 
 // tagsRepetables peuvent légitimement apparaître plusieurs fois sur un même
@@ -682,7 +655,7 @@ func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) 
 		}
 	}
 
-	apportBlocs := blocs(traduire(apportRec.Lignes[1:], table))
+	apportBlocs := blocs(gedcom.TraduireXrefs(apportRec.Lignes[1:], table))
 	for _, b := range apportBlocs {
 		d, ok := gedcom.Decoupe(b[0])
 		if !ok || d.Tag == "CHAN" {
@@ -761,7 +734,7 @@ func preparer(base, apport *gedcom.Gedcom, niveau Niveau) *fusion {
 			f.conflits = append(f.conflits, conflits...)
 			continue
 		}
-		f.copies = append(f.copies, gedcom.NewRecord(traduire(r.Lignes, table)))
+		f.copies = append(f.copies, gedcom.NewRecord(gedcom.TraduireXrefs(r.Lignes, table)))
 	}
 	return f
 }

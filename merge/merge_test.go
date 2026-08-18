@@ -336,7 +336,7 @@ func TestReecrireReecritLesPointeurs(t *testing.T) {
 		"0 @F0001@ FAM\n1 HUSB @I0001@\n"+
 		pied)
 	table := map[string]string{"I0001": "BI0001", "F0001": "BF0001"}
-	r := reecrire(g, table)
+	r := g.Retraduire(table)
 	i1, ok := r.Get("BI0001")
 	if !ok {
 		t.Fatal("I0001 non réécrit en BI0001")
