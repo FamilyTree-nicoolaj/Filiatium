@@ -188,10 +188,10 @@ func commandeIAPour(c Commande) commandeIA {
 		}
 	case "import":
 		flagsImport(fs)
-		ci.Usage = "filiatium import <dst.ged> <fiche1.png> [fiche2.png ...] [options]"
+		ci.Usage = "filiatium import <dst.ged> <fiche1.html> [fiche2.html ...] [options]"
 		ci.Positionnels = []positionnelIA{
 			{Nom: "dst.ged", Description: "fichier de sortie — toujours nouveau, jamais un fichier déjà existant", Obligatoire: true},
-			{Nom: "fiche.png ...", Description: "une ou plusieurs captures de fiches Geneanet (ou fichiers texte avec --texte)", Obligatoire: true},
+			{Nom: "fiche.html ...", Description: "code source HTML d'une ou plusieurs fiches individuelles Geneanet", Obligatoire: true},
 		}
 	}
 

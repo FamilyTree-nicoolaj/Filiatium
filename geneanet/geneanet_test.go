@@ -1,262 +1,156 @@
 package geneanet
 
 import (
+	"os"
 	"testing"
 
 	"github.com/FamilyTree-nicoolaj/filiatium/add"
 	"github.com/FamilyTree-nicoolaj/filiatium/gedcom"
 )
 
-// Les 3 fiches réelles ayant motivé cette commande : Victoire LOUIS, son mari
-// François Joseph BOUCHART, et la mère de celui-ci Marie Françoise TILMONT. Elles se
-// recoupent délibérément (voir les 3 cas de déduplication testés plus bas).
-const ficheVictoire = `
-♀ Victoire LOUIS
-- Née le 3 septembre 1798 (lundi) - Hasnon (Nord)
-- Décédée le 26 avril 1856 (samedi) - Hasnon (Nord), à l'âge de 57 ans
-
-Union(s) et enfant(s)
-- Mariée le 25 juin 1822 (mardi), Hasnon (Nord), avec François Joseph BOUCHART 1787-1870 dont
-    ♂ Prudent François BOUCHART 1826-1878
-    ♀ Rosalie Anastasie BOUCHART 1828-1900
-    ♀ Augustine BOUCHART 1831-1916
-
-Sources
-- Famille: AD du Nord
-`
-
-const ficheFrancois = `
-♂ François Joseph BOUCHART
-- Né le 20 septembre 1787 (jeudi) - Hasnon (Nord)
-- Décédé le 10 septembre 1870 (samedi) - Hasnon (Nord), à l'âge de 82 ans
-
-Parents
-- Charles François Joseph BOUCHART 1754-1798
-- Augustine Françoise TILMONT 1760-1789
-
-Union(s) et enfant(s)
-- Marié le 25 juin 1822 (mardi), Hasnon (Nord), avec Victoire LOUIS 1798-1856 dont
-    ♂ Prudent François BOUCHART 1826-1878
-    ♀ Rosalie Anastasie BOUCHART 1828-1900
-    ♀ Augustine BOUCHART 1831-1916
-
-Frères et sœurs
-- ♀ Marie Joseph BOUCHART 1785-1856
-- ♀ François Joseph BOUCHART 1786-1787
-- ♂ François Joseph BOUCHART 1787-1870
-- ♀ Marie Augustine BOUCHART 1789
-
-Demi-frères et demi-sœurs
-Du côté de Charles François Joseph BOUCHART 1754-1798
-- avec Marie Françoise TILMONT 1755
-    ♂ Louis Joseph BOUCHART 1792
-    ♂ Charles BOUCHART 1793
-`
-
-const ficheMarie = `
-♀ Marie Françoise TILMONT
-- Née le 26 novembre 1755 (mercredi) - Hasnon (Nord)
-
-Parents
-- Basile TILMONT
-- Marie Françoise BAUDRY
-
-Union(s) et enfant(s)
-- Mariée le 7 février 1792 (mardi), Hasnon (Nord), avec Charles François Joseph BOUCHART 1754-1798 dont
-    ♂ Louis Joseph BOUCHART 1792
-    ♂ Charles BOUCHART 1793
-- Mariée le 30 janvier 1798 (mardi), Millonfosse (Nord), avec Charles SOIL †1805
-
-Frères et sœurs
-- ♂ Jacques Philippe TILMONT 1753
-- ♀ Marie Françoise TILMONT 1755
-- ♀ Augustine Françoise TILMONT 1760-1789
-
-Sources
-- Naissance: AD du Nord p 353
-- Union 1: AD du Nord p 180
-- Union 2: AD du Nord p 78
-`
-
-func TestParseFicheVictoire(t *testing.T) {
-	f, err := Parse(ficheVictoire)
+func lireFixture(t *testing.T, nom string) []byte {
+	t.Helper()
+	contenu, err := os.ReadFile("testdata/" + nom)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Sujet.Nom != "Victoire LOUIS" || f.Sujet.Sexe != "F" {
-		t.Fatalf("sujet = %+v", f.Sujet)
+	return contenu
+}
+
+func TestEstFicheGeneanet(t *testing.T) {
+	if !EstFicheGeneanet(lireFixture(t, "fiche_sujet.html")) {
+		t.Error("fiche_sujet.html devrait être reconnue")
 	}
-	if f.Naissance.Date != "3 SEP 1798" || f.Naissance.Lieu != "Hasnon (Nord)" {
-		t.Fatalf("naissance = %+v", f.Naissance)
-	}
-	if f.Deces.Date != "26 APR 1856" || f.Deces.Lieu != "Hasnon (Nord)" {
-		t.Fatalf("deces = %+v", f.Deces)
-	}
-	if len(f.Unions) != 1 || f.Unions[0].Conjoint.Nom != "François Joseph BOUCHART" {
-		t.Fatalf("unions = %+v", f.Unions)
-	}
-	if f.Unions[0].Mariage.Date != "25 JUN 1822" || f.Unions[0].Mariage.Lieu != "Hasnon (Nord)" {
-		t.Fatalf("mariage = %+v", f.Unions[0].Mariage)
-	}
-	if len(f.Unions[0].Enfants) != 3 {
-		t.Fatalf("enfants = %+v", f.Unions[0].Enfants)
-	}
-	if len(f.Sources) != 1 || f.Sources[0].Label != "Famille" || f.Sources[0].Texte != "AD du Nord" {
-		t.Fatalf("sources = %+v", f.Sources)
+	if EstFicheGeneanet([]byte("<html><body>rien à voir</body></html>")) {
+		t.Error("une page sans gw.geneanet.org ne devrait pas être reconnue")
 	}
 }
 
-// Fiche réelle montrant le bloc "Grands-parents, oncles et tantes" (2 générations en
-// arrière), absent des 3 fiches ci-dessus. Linéarisée colonne par colonne (paternel
-// entier, puis maternel entier) — convention confirmée avec l'utilisateur.
-const ficheMarquet = `
-♂ Pierre Marquet
-- Né le 3 février 1830 (mercredi) - Laborie, Saint-Etienne de Maurs, Cantal, Auvergne, France
-
-Parents
-- Pierre Marquet 1801-1877
-- Marie Brayat 1798-1870
-
-Frères et sœurs
-- ♂ Antoine Marquet 1825
-- ♂ Cézaire dit Jean Marquet 1827-1898
-- ♂ Pierre Marquet 1830
-- ♀ Marie Marquet 1832-1893
-- ♂ Jean Marquet 1835
-- ♀ Agnès Marguerite Marquet 1840-1917
-
-Grands parents paternels, oncles et tantes
-- ♂ Maurice Marquet 1762-1823 ⚭ (1787)
-- ♀ Marguerite Rouquet 1766-1841
-- ♀ Fille Marquet 1787-1787 ✂
-- ♀ Anne Marquet 1789- ⊖ (1815)
-- ♂ Jean Marquet 1791-1791 ✂
-- ♂ Jean Marquet 1792- ✂
-- ♀ Catherine Marquet 1796-1864 ✂
-- ♂ Antoine Marquès ou Marquet ca 1803- ✂
-- ♀ Jeanne Marquet 1804- ✂
-- ♂ Etienne Marquet 1805-1806 ✂
-- ♀ Marianne Marquet 1809- ✂
-
-Grands parents maternels, oncles et tantes
-- ♂ Jean Brayat 1762-1843 ⚭ (1793)
-- ♀ Jeanne Puech 1769-1834
-- ♂ Pierre Brayat 1796-1864
-`
-
-func TestParseFicheMarquet(t *testing.T) {
-	f, err := Parse(ficheMarquet)
+// TestParserHTMLFicheSujet couvre la forme générale d'une fiche Geneanet réelle
+// (données inventées, dépôt public — voir testdata/fiche_sujet.html) : sujet,
+// naissance/décès/profession, Parents, Frères et sœurs (dont l'auto-référence en <b>,
+// sans lien vers soi-même), Notes, Sources, et l'arbre des 4 grands-parents directs
+// (sans oncles/tantes — cette vue simple ne les montre pas, jamais deviné).
+func TestParserHTMLFicheSujet(t *testing.T) {
+	f, err := ParserHTML(lireFixture(t, "fiche_sujet.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Sujet.Nom != "Pierre Marquet" || f.Sujet.Sexe != "M" {
+
+	if f.Sujet.Nom != "Julien Fabre" || f.Sujet.Sexe != "M" {
 		t.Fatalf("sujet = %+v", f.Sujet)
+	}
+	if f.Naissance.Date != "12 MAR 1810" || f.Naissance.Lieu != "Sarlat, 24001, Dordogne, Aquitaine, France" {
+		t.Fatalf("naissance = %+v", f.Naissance)
+	}
+	if f.Deces.Date != "4 JAN 1880" || f.Deces.Lieu != "Sarlat, 24001, Dordogne, Aquitaine, France" {
+		t.Fatalf("deces = %+v", f.Deces)
+	}
+	if f.Profession == nil || f.Profession.Intitule != "Meunier" || f.Profession.Lieu != "Sarlat" {
+		t.Fatalf("profession = %+v", f.Profession)
+	}
+
+	if f.Parents[0].Nom != "Antoine Fabre" || f.Parents[0].Naissance != 1780 || f.Parents[0].Deces != 1850 {
+		t.Fatalf("père = %+v", f.Parents[0])
+	}
+	if f.Parents[1].Nom != "Jeanne Vidal" || f.Parents[1].Naissance != 1782 || f.Parents[1].Deces != 1845 {
+		t.Fatalf("mère = %+v", f.Parents[1])
+	}
+
+	if len(f.Fratrie) != 3 {
+		t.Fatalf("fratrie = %+v", f.Fratrie)
+	}
+	soiMeme := f.Fratrie[1]
+	if soiMeme.Nom != "Julien Fabre" || soiMeme.Sexe != "M" || soiMeme.Naissance != 1810 || soiMeme.Deces != 1880 {
+		t.Fatalf("auto-référence (<b>, sans lien) = %+v", soiMeme)
+	}
+	louis := f.Fratrie[2]
+	if louis.Nom != "Louis Fabre" || !louis.OkNaissance || louis.Naissance != 1813 || louis.OkDeces {
+		t.Fatalf("Louis Fabre (1813-, décès inconnu) = %+v", louis)
+	}
+
+	if len(f.Notes) != 2 {
+		t.Fatalf("notes = %+v", f.Notes)
+	}
+	if f.Notes[0] != "Naissance : déclaration le 13 mars, présents Jean Delmas cultivateur et Pierre Auriac meunier" {
+		t.Errorf("note naissance = %q", f.Notes[0])
+	}
+	if f.Notes[1] != "Décès : orthographié aussi Fabres" {
+		t.Errorf("note décès = %q", f.Notes[1])
+	}
+
+	if len(f.Sources) != 2 || f.Sources[0].Label != "Naissance" || f.Sources[0].Texte != "AD 24 Sarlat" {
+		t.Fatalf("sources = %+v", f.Sources)
 	}
 
 	gp := f.GrandsParentsPaternels
 	if gp == nil {
 		t.Fatal("GrandsParentsPaternels manquant")
 	}
-	if gp.GrandPere.Nom != "Maurice Marquet" || gp.GrandPere.MariageAnnee != 1787 || !gp.GrandPere.OkMariage {
+	// Mathieu Fabre a une vignette photo dans la fixture (voir testdata) : sa cellule
+	// porte donc DEUX <a> (le premier n'entourant qu'une <img>, texte vide) — vérifie
+	// que nomNoeud saute bien le premier au profit de celui qui porte le nom.
+	if gp.GrandPere.Nom != "Mathieu Fabre" || gp.GrandPere.Naissance != 1750 || gp.GrandPere.Deces != 1820 {
 		t.Fatalf("grand-père paternel = %+v", gp.GrandPere)
 	}
-	if gp.GrandMere.Nom != "Marguerite Rouquet" || gp.GrandMere.OkMariage {
+	if gp.GrandMere.Nom != "Catherine Roux" || gp.GrandMere.Naissance != 1755 || gp.GrandMere.Deces != 1825 {
 		t.Fatalf("grand-mère paternelle = %+v", gp.GrandMere)
 	}
-	if len(gp.Enfants) != 9 {
-		t.Fatalf("oncles/tantes paternels = %d, attendu 9 (%+v)", len(gp.Enfants), gp.Enfants)
-	}
-	if !gp.Enfants[0].SansDescendance {
-		t.Fatalf("Fille Marquet (✂) = %+v", gp.Enfants[0])
-	}
-	anne := gp.Enfants[1]
-	if anne.Nom != "Anne Marquet" || anne.SansDescendance || !anne.OkMariage || anne.MariageAnnee != 1815 {
-		t.Fatalf("Anne Marquet (⊖ 1815) = %+v", anne)
-	}
-	antoine := gp.Enfants[5]
-	if antoine.Nom != "Antoine Marquès ou Marquet" || !antoine.OkNaissance || antoine.Naissance != 1803 {
-		t.Fatalf("Antoine Marquès ou Marquet (ca 1803-) = %+v", antoine)
+	if gp.Enfants != nil {
+		t.Errorf("oncles/tantes paternels devraient être vides (vue simple) : %+v", gp.Enfants)
 	}
 
 	gm := f.GrandsParentsMaternels
 	if gm == nil {
 		t.Fatal("GrandsParentsMaternels manquant")
 	}
-	if gm.GrandPere.Nom != "Jean Brayat" || gm.GrandPere.MariageAnnee != 1793 {
-		t.Fatalf("grand-père maternel = %+v", gm.GrandPere)
+	if gm.GrandPere.Nom != "Pierre Vidal" || !gm.GrandPere.OkNaissance || gm.GrandPere.Naissance != 1748 ||
+		!gm.GrandPere.OkDeces || gm.GrandPere.Deces != 1811 {
+		t.Fatalf("grand-père maternel (« ca 1748-1811 ») = %+v", gm.GrandPere)
 	}
-	if len(gm.Enfants) != 1 || gm.Enfants[0].Nom != "Pierre Brayat" {
-		t.Fatalf("oncles/tantes maternels = %+v", gm.Enfants)
+	if gm.GrandMere.Nom != "Anne Granier" || gm.GrandMere.OkNaissance || gm.GrandMere.OkDeces {
+		t.Fatalf("grand-mère maternelle (décès connu, date inconnue « † ») = %+v", gm.GrandMere)
 	}
 }
 
-func TestConstruireFicheMarquet(t *testing.T) {
-	f, err := Parse(ficheMarquet)
+// TestParserHTMLUnion couvre la section Union(s) et enfant(s) — le point qui a motivé
+// le passage à l'import HTML (l'OCR fusionnait deux personnes distinctes issues d'une
+// mise en page à deux colonnes ; ici, chaque conjoint/enfant est dans sa propre
+// balise, aucune fusion possible) — et la note d'union associée.
+func TestParserHTMLUnion(t *testing.T) {
+	f, err := ParserHTML(lireFixture(t, "fiche_union.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	g := gedcom.Nouveau()
-	if _, err := Construire(g, []*Fiche{f}, ""); err != nil {
-		t.Fatal(err)
+	if len(f.Unions) != 1 {
+		t.Fatalf("unions = %+v", f.Unions)
+	}
+	u := f.Unions[0]
+	if u.Mariage.Date != "9 JUN 1803" {
+		t.Errorf("date de mariage = %q", u.Mariage.Date)
+	}
+	// Le HTML laisse une virgule de fin ("...France, avec") qu'un OCR n'aurait jamais
+	// produite — regression sur le lieu si elle n'est pas retirée.
+	if u.Mariage.Lieu != "Sarlat, 24001, Dordogne, Aquitaine, France" {
+		t.Errorf("lieu de mariage = %q (virgule de fin non retirée ?)", u.Mariage.Lieu)
+	}
+	if u.Conjoint.Nom != "Jeanne Vidal" || u.Conjoint.Naissance != 1782 || u.Conjoint.Deces != 1845 {
+		t.Fatalf("conjoint = %+v", u.Conjoint)
+	}
+	if u.Note != "acte retrouvé aux registres paroissiaux, page 42" {
+		t.Errorf("note d'union = %q", u.Note)
 	}
 
-	// Le père du sujet (Pierre Marquet 1801-1877) doit être CHIL de la FAM des
-	// grands-parents paternels bien qu'absent de la liste des oncles/tantes.
-	pere := add.ChercherHomonymes(g, add.Requete{Nom: "Pierre /Marquet/", Naissance: "1801"})
-	if len(pere) != 1 {
-		t.Fatalf("père du sujet : %d trouvé(s), attendu 1", len(pere))
+	if len(u.Enfants) != 5 {
+		t.Fatalf("enfants = %+v", u.Enfants)
 	}
-	pereRec, _ := g.Get(pere[0].Xref)
-	gpFam := pereRec.Valeur("FAMC")
-	if gpFam == "" {
-		t.Fatal("le père du sujet n'a pas de FAMC vers la famille des grands-parents")
+	rose := u.Enfants[3]
+	if rose.Nom != "Rose Fabre" || rose.OkNaissance || !rose.OkDeces || rose.Deces != 1816 {
+		t.Fatalf("Rose Fabre (†1816, décès seul daté) = %+v", rose)
 	}
-	fam, _ := g.Get(gpFam)
-	trouve := false
-	for _, c := range fam.Valeurs("CHIL") {
-		if c == pere[0].Xref {
-			trouve = true
-		}
-	}
-	if !trouve {
-		t.Fatal("le père du sujet n'est pas CHIL de la FAM des grands-parents paternels")
-	}
-
-	// "Anne Marquet" (⊖ 1815) : une FAM avec MARR/DATE 1815, conjoint inconnu.
-	anne := add.ChercherHomonymes(g, add.Requete{Nom: "Anne /Marquet/", Naissance: "1789"})
-	if len(anne) != 1 {
-		t.Fatalf("Anne Marquet : %d trouvée(s), attendu 1", len(anne))
-	}
-	anneRec, _ := g.Get(anne[0].Xref)
-	famsAnne := anneRec.Valeurs("FAMS")
-	if len(famsAnne) != 1 {
-		t.Fatalf("Anne Marquet : %d FAMS, attendu 1", len(famsAnne))
-	}
-	famAnne, _ := g.Get(famsAnne[0])
-	if famAnne.Date("MARR") != "1815" {
-		t.Fatalf("mariage d'Anne Marquet : DATE = %q, attendu 1815", famAnne.Date("MARR"))
-	}
-	if famAnne.Valeur("HUSB") != "" && famAnne.Valeur("WIFE") != "" {
-		t.Fatalf("le conjoint d'Anne Marquet ne devrait pas être connu : %+v", famAnne)
-	}
-
-	// Une personne marquée ✂ ("Jean Marquet" 1791-1791, homonyme à 1 an de "Jean
-	// Marquet" 1792- : add.ChercherHomonymes (fenêtre ±3 ans) trouverait les deux,
-	// d'où une recherche par année exacte ici plutôt que via ce helper) porte NCHI 0.
-	var jeanRec *gedcom.Record
-	for _, ind := range g.Individus() {
-		if ind.Nom() != "Jean Marquet" {
-			continue
-		}
-		if an, ok := gedcom.Annee(ind.Date("DEAT")); ok && an == 1791 {
-			jeanRec = ind
-		}
-	}
-	if jeanRec == nil {
-		t.Fatal("Jean Marquet 1791-1791 introuvable")
-	}
-	if jeanRec.Valeur("NCHI") != "0" {
-		t.Fatalf("Jean Marquet 1791-1791 : NCHI = %q, attendu 0", jeanRec.Valeur("NCHI"))
+	paul := u.Enfants[4]
+	if paul.Nom != "Paul Fabre" || paul.OkNaissance || paul.OkDeces {
+		t.Fatalf("Paul Fabre (†, décès connu sans date) = %+v", paul)
 	}
 }
 
@@ -284,52 +178,130 @@ func TestConstruireGrandParentInconnu(t *testing.T) {
 	}
 }
 
-// TestParsePersonneLigneBruitConjoint couvre deux artefacts réels (import
-// "sarraute75", fiches Jean Rouquier/Jeanne Lourey) qui faisaient échouer la
-// déduplication d'une personne avec sa propre fiche : le nom capté en conjoint
-// portait alors un mot de bruit en trop comme dernier mot, pris pour son patronyme
-// par nomGedcom (ex. "Jean Rouquier /ca/" au lieu de "Jean /Rouquier/").
-func TestParsePersonneLigneBruitConjoint(t *testing.T) {
-	cas := []struct {
-		ligne                string
-		nom                  string
-		naissance, deces     int
-		okNaissance, okDeces bool
-	}{
-		// "ca " devant un couple d'années n'était toléré que devant une année seule
-		// (reAnneeUneRe) : "avec Jean Rouquier ca 1680-1755 dont" laissait "ca" collé
-		// au nom une fois la tranche d'années retirée.
-		{"Jean Rouquier ca 1680-1755", "Jean Rouquier", 1680, 1755, true, true},
-		{"Jean Rouquier vers 1680-1755", "Jean Rouquier", 1680, 1755, true, true},
-		// "avec Jeanne Lourey + dont" : le "+" OCRisé sans millésime derrière (bruit,
-		// pas un marqueur de décès daté) restait comme dernier mot du nom.
-		{"Jeanne Lourey +", "Jeanne Lourey", 0, 0, false, false},
-		// "+ Jeanne Lourey t" (section Parents, même import) : le même poignard "†"
-		// rendu cette fois en la lettre "t" (visuellement proche) plutôt qu'en "+".
-		{"Jeanne Lourey t", "Jeanne Lourey", 0, 0, false, false},
+// TestConstruireFicheSujet couvre Construire au niveau de fiche_sujet.html (pas
+// seulement le parsing) : le sujet est câblé sur la FAM de ses grands-parents
+// paternels bien qu'absent de leur liste d'enfants (elle est toujours vide, voir
+// TestParserHTMLFicheSujet), FAMC/CHIL réciproques des deux côtés.
+func TestConstruireFicheSujet(t *testing.T) {
+	f, err := ParserHTML(lireFixture(t, "fiche_sujet.html"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, c := range cas {
-		p := parsePersonneLigne(c.ligne)
-		if p.Nom != c.nom || p.Naissance != c.naissance || p.Deces != c.deces ||
-			p.OkNaissance != c.okNaissance || p.OkDeces != c.okDeces {
-			t.Errorf("parsePersonneLigne(%q) = %+v, voulu nom=%q naissance=%d(%v) deces=%d(%v)",
-				c.ligne, p, c.nom, c.naissance, c.okNaissance, c.deces, c.okDeces)
+	g := gedcom.Nouveau()
+	if _, err := Construire(g, []*Fiche{f}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	pere := add.ChercherHomonymes(g, add.Requete{Nom: "Antoine /Fabre/", Naissance: "1780"})
+	if len(pere) != 1 {
+		t.Fatalf("père du sujet : %d trouvé(s), attendu 1", len(pere))
+	}
+	pereRec, _ := g.Get(pere[0].Xref)
+	gpFam := pereRec.Valeur("FAMC")
+	if gpFam == "" {
+		t.Fatal("le père du sujet n'a pas de FAMC vers la famille des grands-parents")
+	}
+	fam, _ := g.Get(gpFam)
+	trouve := false
+	for _, c := range fam.Valeurs("CHIL") {
+		if c == pere[0].Xref {
+			trouve = true
 		}
+	}
+	if !trouve {
+		t.Fatal("le père du sujet n'est pas CHIL de la FAM des grands-parents paternels")
+	}
+	if fam.Valeur("HUSB") == "" || fam.Valeur("WIFE") == "" {
+		t.Fatalf("FAM des grands-parents paternels incomplète : %+v", fam.Lignes)
 	}
 }
 
+// TestConstruireFichesReelles couvre la déduplication de Construire (même patronyme
+// et prénom, et — quand connue des deux côtés — même année de naissance) sur 3 fiches
+// qui se recoupent délibérément : Victoire LOUIS, son mari François Joseph BOUCHART,
+// et la mère de celui-ci Marie Françoise TILMONT. Construit directement en Fiche{}
+// littéraux (même contenu que les 3 fiches réelles ayant motivé cette vérification) :
+// Construire est indépendant du format d'entrée (HTML ou, comme avant cette session,
+// OCR), pas la peine d'une fixture HTML pour ce test.
 func TestConstruireFichesReelles(t *testing.T) {
-	fA, err := Parse(ficheVictoire)
-	if err != nil {
-		t.Fatal(err)
+	prudent := Personne{Nom: "Prudent François BOUCHART", Sexe: "M", Naissance: 1826, OkNaissance: true, Deces: 1878, OkDeces: true}
+	rosalie := Personne{Nom: "Rosalie Anastasie BOUCHART", Sexe: "F", Naissance: 1828, OkNaissance: true, Deces: 1900, OkDeces: true}
+	augustineFille := Personne{Nom: "Augustine BOUCHART", Sexe: "F", Naissance: 1831, OkNaissance: true, Deces: 1916, OkDeces: true}
+
+	fA := &Fiche{
+		Sujet:     Personne{Nom: "Victoire LOUIS", Sexe: "F"},
+		Naissance: Evenement{Date: "3 SEP 1798", Lieu: "Hasnon (Nord)"},
+		Deces:     Evenement{Date: "26 APR 1856", Lieu: "Hasnon (Nord)"},
+		Unions: []Union{{
+			Conjoint: Personne{Nom: "François Joseph BOUCHART", Naissance: 1787, OkNaissance: true, Deces: 1870, OkDeces: true},
+			Mariage:  Evenement{Date: "25 JUN 1822", Lieu: "Hasnon (Nord)"},
+			Enfants:  []Personne{prudent, rosalie, augustineFille},
+		}},
+		Sources: []Source{{Label: "Famille", Texte: "AD du Nord"}},
 	}
-	fB, err := Parse(ficheFrancois)
-	if err != nil {
-		t.Fatal(err)
+
+	fB := &Fiche{
+		Sujet:     Personne{Nom: "François Joseph BOUCHART", Sexe: "M"},
+		Naissance: Evenement{Date: "20 SEP 1787", Lieu: "Hasnon (Nord)"},
+		Deces:     Evenement{Date: "10 SEP 1870", Lieu: "Hasnon (Nord)"},
+		Parents: [2]Personne{
+			{Nom: "Charles François Joseph BOUCHART", Naissance: 1754, OkNaissance: true, Deces: 1798, OkDeces: true},
+			{Nom: "Augustine Françoise TILMONT", Naissance: 1760, OkNaissance: true, Deces: 1789, OkDeces: true},
+		},
+		Unions: []Union{{
+			Conjoint: Personne{Nom: "Victoire LOUIS", Naissance: 1798, OkNaissance: true, Deces: 1856, OkDeces: true},
+			Mariage:  Evenement{Date: "25 JUN 1822", Lieu: "Hasnon (Nord)"},
+			Enfants:  []Personne{prudent, rosalie, augustineFille},
+		}},
+		Fratrie: []Personne{
+			{Nom: "Marie Joseph BOUCHART", Sexe: "F", Naissance: 1785, OkNaissance: true, Deces: 1856, OkDeces: true},
+			{Nom: "François Joseph BOUCHART", Sexe: "F", Naissance: 1786, OkNaissance: true, Deces: 1787, OkDeces: true},
+			{Nom: "François Joseph BOUCHART", Sexe: "M", Naissance: 1787, OkNaissance: true, Deces: 1870, OkDeces: true},
+			{Nom: "Marie Augustine BOUCHART", Sexe: "F", Naissance: 1789, OkNaissance: true},
+		},
+		DemiFratrie: []DemiFratrieGroupe{{
+			ParentCommun: Personne{Nom: "Charles François Joseph BOUCHART", Naissance: 1754, OkNaissance: true, Deces: 1798, OkDeces: true},
+			Unions: []Union{{
+				Conjoint: Personne{Nom: "Marie Françoise TILMONT", Naissance: 1755, OkNaissance: true},
+				Enfants: []Personne{
+					{Nom: "Louis Joseph BOUCHART", Sexe: "M", Naissance: 1792, OkNaissance: true},
+					{Nom: "Charles BOUCHART", Sexe: "M", Naissance: 1793, OkNaissance: true},
+				},
+			}},
+		}},
 	}
-	fC, err := Parse(ficheMarie)
-	if err != nil {
-		t.Fatal(err)
+
+	fC := &Fiche{
+		Sujet:     Personne{Nom: "Marie Françoise TILMONT", Sexe: "F"},
+		Naissance: Evenement{Date: "26 NOV 1755", Lieu: "Hasnon (Nord)"},
+		Parents: [2]Personne{
+			{Nom: "Basile TILMONT"},
+			{Nom: "Marie Françoise BAUDRY"},
+		},
+		Unions: []Union{
+			{
+				Conjoint: Personne{Nom: "Charles François Joseph BOUCHART", Naissance: 1754, OkNaissance: true, Deces: 1798, OkDeces: true},
+				Mariage:  Evenement{Date: "7 FEB 1792", Lieu: "Hasnon (Nord)"},
+				Enfants: []Personne{
+					{Nom: "Louis Joseph BOUCHART", Sexe: "M", Naissance: 1792, OkNaissance: true},
+					{Nom: "Charles BOUCHART", Sexe: "M", Naissance: 1793, OkNaissance: true},
+				},
+			},
+			{
+				Conjoint: Personne{Nom: "Charles SOIL", Deces: 1805, OkDeces: true},
+				Mariage:  Evenement{Date: "30 JAN 1798", Lieu: "Millonfosse (Nord)"},
+			},
+		},
+		Fratrie: []Personne{
+			{Nom: "Jacques Philippe TILMONT", Sexe: "M", Naissance: 1753, OkNaissance: true},
+			{Nom: "Marie Françoise TILMONT", Sexe: "F", Naissance: 1755, OkNaissance: true},
+			{Nom: "Augustine Françoise TILMONT", Sexe: "F", Naissance: 1760, OkNaissance: true, Deces: 1789, OkDeces: true},
+		},
+		Sources: []Source{
+			{Label: "Naissance", Texte: "AD du Nord p 353"},
+			{Label: "Union 1", Texte: "AD du Nord p 180"},
+			{Label: "Union 2", Texte: "AD du Nord p 78"},
+		},
 	}
 
 	g := gedcom.Nouveau()

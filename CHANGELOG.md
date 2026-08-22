@@ -3,6 +3,41 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [3.0.0] — 2026-08-22
+
+### Modifié (changement cassant)
+
+- `import` prend désormais en entrée le code source HTML d'une fiche individuelle
+  Geneanet (« Enregistrer sous » / « Afficher la source » depuis le navigateur) au
+  lieu d'une capture d'écran OCRisée en interne — **suppression complète de la
+  dépendance à `tesseract`** (`geneanet.OCR`, `geneanet.TesseractDisponible`, l'option
+  `--texte`, les dépendances Homebrew `tesseract`/`tesseract-lang`). Root cause :
+  l'OCR n'offre aucune garantie structurelle — une fiche réelle a révélé un bug non
+  cosmétique (le bloc grands-parents en deux colonnes, fusionné par l'OCR sur les
+  mêmes lignes, fabriquait un individu fantôme au nom composite et un mariage
+  inventé entre deux couples de grands-parents distincts). Le HTML lève cette
+  ambiguïté à la racine : sexe explicite, sections délimitées sans ambiguïté, dates
+  et lieux en texte clair. Premier ajout d'une dépendance Go au module
+  (`golang.org/x/net/html`, le tokenizer HTML5 maintenu par l'équipe Go).
+  L'aiguillage vers le parseur (par contenu — le lien canonique `gw.geneanet.org` —
+  jamais par extension de fichier) est conçu pour qu'une deuxième source de
+  généalogie s'ajoute plus tard sans toucher au reste de la commande ; seul Geneanet
+  est pris en charge pour l'instant.
+
+### Ajouté
+
+- `import` capture désormais aussi les Notes individuelles et les Notes concernant
+  l'union (texte libre, jamais fiable à distinguer d'une mention de personne en
+  OCR, maintenant extrait sans ambiguïté du HTML) — écrites en `NOTE` GEDCOM sur
+  l'individu et sur la FAM correspondante.
+
+### Retiré
+
+- La vue de fiche simple ne montre que les 4 grands-parents directs (nom/dates),
+  pas leur fratrie (oncles/tantes du sujet, qui nécessite une vue Geneanet
+  différente, non disponible dans une page enregistrée simplement) : ce champ reste
+  désormais toujours vide plutôt que peuplé depuis une capture — jamais deviné.
+
 ## [2.2.8] — 2026-08-22
 
 ### Corrigé

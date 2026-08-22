@@ -5,10 +5,6 @@ class Filiatium < Formula
   sha256 "ce6fcf2d672a72190072e2f486f5c95ab0e184ac595dea9886d9853f3bb065c8"
   license "MIT"
   depends_on "go" => :build
-  depends_on "tesseract"
-  # La formule "tesseract" seule n'embarque que eng/osd/snum : "tesseract-lang" ajoute
-  # fra (entre autres), nécessaire à `filiatium import`.
-  depends_on "tesseract-lang"
 
   def install
     system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=v#{version}"), "."

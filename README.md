@@ -6,11 +6,10 @@ ses liens de parenté sans ambiguïté, appliquer des correctifs déclaratifs, a
 si deux arbres sont fusionnables (ou les fusionner directement à partir de paires
 d'individus déclarées), renuméroter proprement un GEDCOM, en publier une version
 purgée des faits invraisemblables et non sourcés, et construire un arbre complet à
-partir de captures d'écran de fiches Geneanet (OCR interne).
+partir de pages HTML de fiches Geneanet enregistrées par l'utilisatrice/l'utilisateur.
 
-Écrit en Go, zéro dépendance Go externe (stdlib seule), binaire statique. Seule
-`import` a une dépendance d'exécution hors Go : le binaire système `tesseract`
-(voir cette commande plus bas) — les autres n'en ont aucune.
+Écrit en Go, binaire statique, une seule dépendance externe (`golang.org/x/net/html`,
+pour `import` — les autres commandes n'en ont aucune).
 
 **[Releases](https://github.com/FamilyTree-nicoolaj/filiatium/releases)** —
 binaires précompilés (macOS universel, macOS arm64/amd64, Linux amd64/arm64,
@@ -281,46 +280,46 @@ Seules les règles de réalisme désignent des candidats : les défauts structur
 ne supprime, et les doublons (`D`) sont une question de redondance, pas de
 vérité d'un fait.
 
-### `import` — construire un arbre depuis des captures Geneanet
+### `import` — construire un arbre depuis des fiches Geneanet (HTML)
 
-Construit un GEDCOM complet à partir de captures d'écran de fiches individuelles
-Geneanet (parents, union(s)/enfants, frères et sœurs, demi-frères et demi-sœurs,
-profession, sources, grands-parents/oncles/tantes) : l'OCR est fait **en interne**
-par `filiatium`, via le binaire système `tesseract` — jamais invoqué à la main. Sur
-le bloc "Grands-parents paternels/maternels, oncles et tantes", le parent du sujet
-est câblé comme enfant du couple de grands-parents même s'il n'y est pas relisté
-(Geneanet l'omet, il apparaît déjà via "Parents") ; `✂` (aucune descendance connue)
-devient `1 NCHI 0`, et `⚭`/`⊖ (année)` (mariage sans détail, du couple de
-grands-parents ou d'un oncle/une tante) devient un `MARR`/`DATE` — sans dupliquer
-si cette même union est déjà connue plus précisément par ailleurs. Les personnes qui se
-recoupent entre plusieurs fiches (un conjoint, un beau-parent déjà décrit sur sa
-propre fiche...) sont **automatiquement dédupliquées**, par patronyme et prénom
+Construit un GEDCOM complet à partir du code source HTML de fiches individuelles
+Geneanet (parents, union(s)/enfants, frères et sœurs, notes, sources, les 4
+grands-parents directs) : chaque fichier d'entrée est la page telle que vue dans le
+navigateur — menu « Enregistrer sous... » ou « Afficher la source de la page » —
+jamais une capture d'écran, jamais un accès réseau direct à Geneanet. Les personnes
+qui se recoupent entre plusieurs fiches (un conjoint, un beau-parent déjà décrit sur
+sa propre fiche...) sont **automatiquement dédupliquées**, par patronyme et prénom
 normalisés et, quand elle est connue des deux côtés, la **même** année de
 naissance — jamais une fenêtre de tolérance : deux germains portant le même nom à
 un an d'écart (l'un mort en bas âge, l'autre baptisé du même nom l'année
 suivante) restent deux personnes distinctes.
 
 ```bash
-filiatium import arbre.ged fiche*.png --auteur "Sylvie DUJARDIN (sylvied58)" --write
-filiatium import arbre.ged fiche1.txt fiche2.txt --texte --write   # déjà en texte, pas de tesseract
+filiatium import arbre.ged fiche*.html --auteur "Sylvie DUJARDIN (sylvied58)" --write
 ```
 
 Écrit toujours vers un nouveau `dst.ged`, jamais dans un fichier déjà existant.
 `--auteur` attribue une source Geneanet partagée (créée une fois, citée sur
 chaque enregistrement de cet import) à l'utilisatrice/au contributeur Geneanet
-source de la capture, en plus des citations archivistiques propres à chaque
-fiche (« AD du Nord p 353 »...). `--texte` évite l'appel à `tesseract` quand les
-fichiers sont déjà du texte (OCR fait à part, ou copié-collé) — utile aussi pour
-tester le parseur indépendamment de la qualité de l'OCR.
+source de la fiche, en plus des citations archivistiques propres à chaque fiche
+(« AD du Nord p 353 »...). `--force D1` fusionne automatiquement chaque paire de
+FAM signalée par la règle `D1` (conjoint commun et enfant(s) commun(s), donc
+probablement la même union décrite sur deux fiches) avant d'écrire — refuse sans
+rien modifier quand HUSB ou WIFE diffère des deux côtés (pas un doublon mécanique,
+laissé à l'arbitrage humain).
 
 Rejoue le registre de règles avant/après la construction, mais — contrairement à
 `fix`/`add`/`apply`/`forcemerge` — ne bloque `--write` que sur un signalement
 structure/liens/doublons (un vrai défaut). Un signalement de réalisme (ex. `R13`,
 aucun décès enregistré) reste affiché dans le rapport sans bloquer l'écriture :
-comparé à un fichier vide, il est quasi certain sur n'importe quelle capture
-réelle (beaucoup d'ascendants n'ont simplement pas de date de décès connue) —
-un retour légitime sur des données réellement incomplètes, pas un défaut
-introduit par la construction.
+comparé à un fichier vide, il est quasi certain sur n'importe quelle fiche réelle
+(beaucoup d'ascendants n'ont simplement pas de date de décès connue) — un retour
+légitime sur des données réellement incomplètes, pas un défaut introduit par la
+construction.
+
+La vue de fiche simple ne montre que les 4 grands-parents directs (nom/dates), pas
+leur fratrie (oncles/tantes du sujet) — nécessite une vue Geneanet différente,
+jamais devinée : le champ reste vide plutôt que faux.
 
 ## Usage par un script ou un agent
 
@@ -376,7 +375,7 @@ patch/    correctifs déclaratifs JSON (préconditions + opérations)
 merge/    moteur de fusion (identité par contenu/score/ancres) — automerge et forcemerge
 renumber/ renumérotation complète des xref INDI/FAM (source, décalage, préfixe)
 publish/  purge des faits de réalisme non sourcés (niveaux strict/modere/large)
-geneanet/ parseur de fiches Geneanet OCR'd + résolution d'identité + construction GEDCOM (import)
+geneanet/ parseur de fiches Geneanet HTML + résolution d'identité + construction GEDCOM (import)
 cmd_*.go  sous-commandes CLI ; main.go/interactif.go l'aiguillage et le menu guidé
 scripts/  parite.sh, roundtrip.sh — recette de non-régression contre le corpus réel
 ```
@@ -394,7 +393,7 @@ l'utilisateur, jamais une heuristique de ressemblance, qui déclare les paires �
 fusionner (mode miroir) — forcemerge écrit alors directement, mais ne perd pour
 autant aucune information divergente (préservée en NOTE, voir plus haut).
 `import` reste dans ce même périmètre : il ne scrape rien en direct (aucun accès
-réseau à Geneanet) — il convertit des captures d'écran déjà faites par
+réseau à Geneanet) — il convertit une page HTML déjà enregistrée par
 l'utilisateur, avec les mêmes garde-fous que le reste de l'outil.
 
 ## Licence

@@ -14,17 +14,16 @@ import (
 )
 
 const aideImport = `
-filiatium import <dst.ged> <fiche1.png> [fiche2.png ...] [options]
+filiatium import <dst.ged> <fiche1.html> [fiche2.html ...] [options]
 
-Construit un arbre GEDCOM complet à partir de captures d'écran de fiches
-individuelles Geneanet (parents, union(s)/enfants, frères et sœurs, demi-frères et
-demi-sœurs, profession, sources), en dédupliquant automatiquement les personnes qui
-apparaissent sur plusieurs fiches (même patronyme et prénom, et — quand elle est
-connue des deux côtés — même année de naissance).
+Construit un arbre GEDCOM complet à partir de pages HTML de fiches individuelles
+Geneanet (parents, union(s)/enfants, frères et sœurs, notes, sources), en dédupliquant
+automatiquement les personnes qui apparaissent sur plusieurs fiches (même patronyme et
+prénom, et — quand elle est connue des deux côtés — même année de naissance).
 
-L'OCR est fait en interne via le binaire système "tesseract" (jamais invoqué à la
-main) : erreur claire et actionnable si le binaire est absent du PATH. --texte évite
-cet appel quand les fichiers sont déjà du texte (OCR fait à part, ou copié-collé).
+Chaque fichier d'entrée est le code source HTML de la page individuelle telle que vue
+dans le navigateur (menu "Enregistrer sous..." ou "Afficher la source de la page") —
+jamais une capture d'écran, jamais un accès réseau direct à Geneanet.
 
 Écrit toujours vers un nouveau fichier dst.ged, jamais dans un fichier déjà existant.
 Rejoue le registre de règles ("filiatium check") avant/après la construction ; refuse
@@ -35,8 +34,7 @@ un retour légitime sur des données réellement incomplètes, pas un défaut in
 par la construction.
 
 Options :
-  --texte     les fichiers d'entrée sont déjà du texte — tesseract n'est pas invoqué
-  --auteur    utilisatrice/contributrice Geneanet source de la capture (ex.
+  --auteur    utilisatrice/contributrice Geneanet source de la fiche (ex.
               "Sylvie DUJARDIN (sylvied58)"), attribuée à la source Geneanet créée
               pour cet import
   --force     "D1" : fusionne automatiquement chaque paire de FAM signalée par D1
@@ -48,13 +46,13 @@ Options :
   --json      rapport en JSON plutôt qu'en texte
 
 Exemple :
-  filiatium import arbre.ged fiche*.png --auteur "Sylvie DUJARDIN (sylvied58)" --write
+  filiatium import arbre.ged fiche*.html --auteur "Sylvie DUJARDIN (sylvied58)" --write
 `
 
 func init() {
 	commandes = append(commandes, Commande{
 		Nom:           "import",
-		Description:   "Construire un GEDCOM depuis des captures Geneanet (OCR interne)",
+		Description:   "Construire un GEDCOM depuis des pages HTML Geneanet",
 		AideDetaillee: aideImport,
 		Executer:      cmdImport,
 	})
@@ -62,13 +60,49 @@ func init() {
 
 // flagsImport enregistre les options de `import` sur fs — voir flagsCheck
 // (cmd_check.go) pour pourquoi ceci est factorisé à part.
-func flagsImport(fs *flag.FlagSet) (texte *bool, auteur, force *string, ecrire, sortieJSON *bool) {
-	texte = fs.Bool("texte", false, "fichiers déjà en texte — pas d'appel à tesseract")
-	auteur = fs.String("auteur", "", `utilisatrice/contributrice Geneanet source de la capture, ex. "Sylvie DUJARDIN (sylvied58)"`)
+func flagsImport(fs *flag.FlagSet) (auteur, force *string, ecrire, sortieJSON *bool) {
+	auteur = fs.String("auteur", "", `utilisatrice/contributrice Geneanet source de la fiche, ex. "Sylvie DUJARDIN (sylvied58)"`)
 	force = fs.String("force", "", `"D1" : fusionne automatiquement les paires de FAM signalées par D1`)
 	ecrire = fs.Bool("write", false, "écrire dst.ged (sinon simulation)")
 	sortieJSON = fs.Bool("json", false, "rapport en JSON plutôt qu'en texte")
 	return
+}
+
+// sourceImport reconnaît et parse un format de fiche donné (un site de généalogie) —
+// une seule entrée aujourd'hui (Geneanet), mais une deuxième s'ajoute ici sans toucher
+// au reste de cmdImport, même convention que commandes ([]Commande, main.go) et
+// rules.Registre ([]Regle, rules/rules.go) : le registre vit chez le consommateur, pas
+// chez la source (évite un cycle d'import si une source devait un jour référencer un
+// type partagé).
+type sourceImport struct {
+	Nom      string
+	Detecter func(contenu []byte) bool
+	Parser   func(contenu []byte) (*geneanet.Fiche, error)
+}
+
+var sourcesImport = []sourceImport{
+	{Nom: "geneanet", Detecter: geneanet.EstFicheGeneanet, Parser: geneanet.ParserHTML},
+}
+
+// detecterSource choisit la source d'une fiche par son CONTENU, jamais par l'extension
+// du fichier — le navigateur de l'utilisateur peut enregistrer en .html, .htm, voire
+// .txt selon sa configuration.
+func detecterSource(contenu []byte) (*sourceImport, error) {
+	var trouvee *sourceImport
+	for i := range sourcesImport {
+		if sourcesImport[i].Detecter(contenu) {
+			if trouvee != nil {
+				return nil, fmt.Errorf("plusieurs sources reconnaissent ce contenu (%s, %s) — ambigu",
+					trouvee.Nom, sourcesImport[i].Nom)
+			}
+			trouvee = &sourcesImport[i]
+		}
+	}
+	if trouvee == nil {
+		return nil, fmt.Errorf("format non reconnu — attendu : page HTML d'une fiche individuelle Geneanet " +
+			"(« Enregistrer sous » ou « Afficher la source » depuis le navigateur)")
+	}
+	return trouvee, nil
 }
 
 // reglesForcables sont les règles que --force sait effectivement appliquer —
@@ -122,7 +156,7 @@ func cmdImport(argv []string) int {
 		return 0
 	}
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	texte, auteur, force, ecrire, sortieJSON := flagsImport(fs)
+	auteur, force, ecrire, sortieJSON := flagsImport(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
 
 	forcees, err := parseForce(*force)
@@ -132,7 +166,7 @@ func cmdImport(argv []string) int {
 	}
 
 	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage : filiatium import <dst.ged> <fiche1.png> [fiche2.png ...] [options]")
+		fmt.Fprintln(os.Stderr, "usage : filiatium import <dst.ged> <fiche1.html> [fiche2.html ...] [options]")
 		return 2
 	}
 	cheminDst, sources := fs.Arg(0), fs.Args()[1:]
@@ -143,21 +177,19 @@ func cmdImport(argv []string) int {
 		}
 	}
 
-	if !*texte {
-		if err := geneanet.TesseractDisponible(); err != nil {
-			fmt.Fprintln(os.Stderr, "erreur :", err)
-			return 2
-		}
-	}
-
 	var fiches []*geneanet.Fiche
 	for _, src := range sources {
-		brut, err := lireOuOCR(src, *texte)
+		contenu, err := os.ReadFile(src)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "erreur :", err)
 			return 2
 		}
-		f, err := geneanet.Parse(brut)
+		source, err := detecterSource(contenu)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "erreur : %s : %v\n", src, err)
+			return 2
+		}
+		f, err := source.Parser(contenu)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "erreur : %s : %v\n", src, err)
 			return 2
@@ -241,19 +273,6 @@ func sansRealisme(m map[string][]rules.Finding) map[string][]rules.Finding {
 		}
 	}
 	return out
-}
-
-// lireOuOCR lit le texte d'une fiche : directement si texte==true, sinon via
-// geneanet.OCR (tesseract).
-func lireOuOCR(chemin string, texte bool) (string, error) {
-	if texte {
-		octets, err := os.ReadFile(chemin)
-		if err != nil {
-			return "", err
-		}
-		return string(octets), nil
-	}
-	return geneanet.OCR(chemin)
 }
 
 func afficherImportTexte(cheminDst string, sources []string, rapport *geneanet.Rapport, apres map[string][]rules.Finding, nFusionsD1 int, ignoreesD1 []string) {

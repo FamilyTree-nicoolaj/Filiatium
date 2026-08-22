@@ -240,6 +240,9 @@ func cablerFiche(g *gedcom.Gedcom, f *Fiche, sourcesXref map[string]string, sour
 	}
 	sujet, _ := g.Get(sujetXref)
 	sujet.AddCitation(sourceGeneanet, "")
+	for _, note := range f.Notes {
+		sujet.AjouterLignes(gedcom.EnligneNote(1, note))
+	}
 
 	if err := cablerParentsEtFratrie(g, f, sujetXref, sourceGeneanet, rap); err != nil {
 		return err
@@ -312,6 +315,7 @@ func cablerUnions(g *gedcom.Gedcom, f *Fiche, sujetXref, sourceGeneanet string) 
 			return err
 		}
 		ajouterMariageSiAbsent(fam, u)
+		ajouterNoteSiAbsente(fam, u.Note)
 
 		for _, e := range u.Enfants {
 			xref, err := resoudre(g, mentionDePersonne(e))
@@ -562,6 +566,24 @@ func rolesConjoint(g *gedcom.Gedcom, a, b, sexeA string) (husb, wife string) {
 		}
 		return a, b
 	}
+}
+
+// ajouterNoteSiAbsente ajoute note en "1 NOTE" (voir gedcom.EnligneNote) — sauf si sa
+// première ligne existe déjà telle quelle sur fam : la même union, décrite depuis les
+// deux fiches conjointes, porte souvent la même "Notes concernant l'union" des deux
+// côtés (voir trouverOuCreerFamilleConjoint, même raison) ; sans cette garde, la
+// deuxième fiche dupliquerait la note.
+func ajouterNoteSiAbsente(fam *gedcom.Record, note string) {
+	if note == "" {
+		return
+	}
+	lignes := gedcom.EnligneNote(1, note)
+	for _, l := range fam.Lignes {
+		if l == lignes[0] {
+			return
+		}
+	}
+	fam.AjouterLignes(lignes)
 }
 
 func ajouterMariageSiAbsent(fam *gedcom.Record, u Union) {
