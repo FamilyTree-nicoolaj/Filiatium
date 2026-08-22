@@ -664,6 +664,12 @@ var tagsRepetables = map[string]bool{
 	"FAMS": true, "FAMC": true, "ASSO": true,
 }
 
+// tagsLiens sont les tags répétables dont la valeur (xref) identifie à elle seule la
+// relation : un même FAMC/FAMS pointant deux fois vers la même famille est un doublon,
+// même si ses sous-lignes diffèrent (PEDI, SOUR...) — contrairement à CHIL/SOUR/NOTE
+// où deux blocs de même tag légitimement distincts (enfants, sources) sont fréquents.
+var tagsLiens = map[string]bool{"FAMC": true, "FAMS": true}
+
 // blocs découpe lignes (déjà hors ligne 0) en unités "ligne de niveau 1 + ses
 // sous-lignes" — un fait GEDCOM ("1 MARR" + "2 DATE" + "2 PLAC"...) est une unité de
 // comparaison, jamais une ligne isolée.
@@ -703,10 +709,14 @@ func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) 
 	baseBlocs := blocs(baseRec.Lignes[1:])
 	baseSet := map[string]bool{}
 	baseTags := map[string]bool{}
+	baseLiens := map[string]bool{} // "TAG\nvaleur" pour FAMC/FAMS : un même lien ne se répète pas
 	for _, b := range baseBlocs {
 		baseSet[strings.Join(b, "\n")] = true
 		if d, ok := gedcom.Decoupe(b[0]); ok {
 			baseTags[d.Tag] = true
+			if tagsLiens[d.Tag] {
+				baseLiens[d.Tag+"\n"+d.Valeur] = true
+			}
 		}
 	}
 
@@ -717,6 +727,11 @@ func lignesAAjouter(baseRec, apportRec *gedcom.Record, table map[string]string) 
 			continue
 		}
 		if baseSet[strings.Join(b, "\n")] {
+			continue
+		}
+		// FAMC/FAMS : même famille déjà liée (même xref) — pas de second bloc
+		// pour cette même relation même si ses sous-lignes diffèrent (PEDI, SOUR...).
+		if tagsLiens[d.Tag] && baseLiens[d.Tag+"\n"+d.Valeur] {
 			continue
 		}
 		if tagsRepetables[d.Tag] || !baseTags[d.Tag] {

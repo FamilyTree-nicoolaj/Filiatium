@@ -3,6 +3,17 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.4] — 2026-08-22
+
+### Corrigé
+
+- `forcemerge`/`automerge` : un `FAMC`/`FAMS` déjà présent en base pouvait être
+  dupliqué par l'apport si ses sous-lignes différaient (ex. `PEDI`, `SOUR`) même
+  quand il pointait vers la même famille — la fusion comparait les blocs texte
+  pour texte au lieu de reconnaître le lien par son xref. Confirmé sur une fusion
+  réelle (jumelles Alphonsine/Augustine Delcroix) : `FAMC @F0322@` se retrouvait
+  écrit deux fois sur la même fiche.
+
 ## [2.2.3] — 2026-08-22
 
 ### Corrigé
