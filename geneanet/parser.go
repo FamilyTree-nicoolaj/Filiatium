@@ -87,13 +87,27 @@ type Fiche struct {
 }
 
 var (
-	reHeadParents     = regexp.MustCompile(`(?i)^parents\s*$`)
+	// Intitulés de section : préfixe seulement, jamais ancrés en fin de ligne — un
+	// intitulé Geneanet est souvent suivi sur la même ligne OCR d'une réglette
+	// décorative que tesseract restitue en bruit variable ("SOUrCES |", "Parents
+	// ——", "Union(s) et enfant(s) TT") ; un ancrage `$` y échoue systématiquement.
+	reHeadParents     = regexp.MustCompile(`(?i)^parents`)
 	reHeadUnion       = regexp.MustCompile(`(?i)^union`)
 	reHeadDemi        = regexp.MustCompile(`(?i)^demi`)
 	reHeadFratrie     = regexp.MustCompile(`(?i)^fr[eè]res\s+et\s+s`)
-	reHeadSources     = regexp.MustCompile(`(?i)^sources\s*$`)
+	reHeadSources     = regexp.MustCompile(`(?i)^sources`)
 	reHeadGPPaternels = regexp.MustCompile(`(?i)^grands?[\s-]*parents?\s+paternels`)
 	reHeadGPMaternels = regexp.MustCompile(`(?i)^grands?[\s-]*parents?\s+maternels`)
+	reHeadNotes       = regexp.MustCompile(`(?i)^notes?\b`)
+
+	// reBulletNoise retire la puce de tête d'une ligne de contenu — jamais un
+	// caractère fixe : un même niveau de liste Geneanet OCRise en "+", "-", "°",
+	// "=", "©", """, "»", "." ou toute combinaison de ceux-ci selon la capture (voir
+	// stripBullet). Le glyphe ♂/♀ lui-même OCRise en bruit alphanumérique
+	// imprévisible ("Q", "os", "9", "d'", "dj"...) qu'aucune regex fixe ne peut
+	// isoler sans risquer de manger un vrai prénom court — non traité (voir
+	// peelGlyph : signal secondaire, jamais requis).
+	reBulletNoise = regexp.MustCompile(`^[-+=°©»§<>._·•○●▪"'’‘“”\s]+`)
 
 	reNaissDeces = regexp.MustCompile(`(?i)^(\S+)\s+le\s+(.+?)\s*\((.+?)\)\s*-\s*(.+)$`)
 	reAgeSuffix  = regexp.MustCompile(`(?i),?\s*[aà]\s*l['’]?\s*[aâ]ge.*$`)
@@ -118,6 +132,11 @@ var (
 	reMarqueurSansDescendance = regexp.MustCompile(`✂\s*$`)
 )
 
+// stripBullet retire le bruit de puce en tête de ligne (voir reBulletNoise).
+func stripBullet(l string) string {
+	return strings.TrimSpace(reBulletNoise.ReplaceAllString(l, ""))
+}
+
 // entete reconnaît un intitulé de section, insensible à la casse/aux accents — jamais
 // à un ordre supposé (voir Parse).
 func entete(l string) string {
@@ -136,6 +155,8 @@ func entete(l string) string {
 		return "gpPaternels"
 	case reHeadGPMaternels.MatchString(l):
 		return "gpMaternels"
+	case reHeadNotes.MatchString(l):
+		return "notes"
 	}
 	return ""
 }
@@ -157,21 +178,30 @@ func Parse(texte string) (*Fiche, error) {
 	}
 
 	f := &Fiche{}
-	nomSujet, sexe := peelGlyph(lignes[0])
+	nomSujet, sexe := peelGlyph(stripBullet(lignes[0]))
 	if nomSujet == "" {
 		return nil, fmt.Errorf("nom du sujet introuvable en tête de fiche")
 	}
 	f.Sujet.Nom, f.Sujet.Sexe = nomSujet, sexe
 
+	// Préambule (naissance/décès/profession) : toute ligne avant le premier
+	// intitulé de section reconnu — jamais "toute ligne à puce", la puce elle-même
+	// n'étant pas un caractère fiable en sortie OCR (voir reBulletNoise).
 	i := 1
-	for i < len(lignes) && strings.HasPrefix(lignes[i], "- ") {
-		contenu := strings.TrimPrefix(lignes[i], "- ")
-		if !f.parseBulletNaissanceDeces(contenu) {
+	for i < len(lignes) && entete(lignes[i]) == "" {
+		contenu := stripBullet(lignes[i])
+		if contenu != "" && !f.parseBulletNaissanceDeces(contenu) {
 			f.parseOccupation(contenu)
 		}
 		i++
 	}
 
+	// À l'intérieur d'une section, la distinction "nouvelle entrée de haut niveau"
+	// vs "enfant imbriqué" (Union(s), Demi-frères) se fait par le CONTENU de la
+	// ligne (motif "Marié(e) le...", préfixe "avec ", "Du côté de...") plutôt que
+	// par sa puce — même raison : la puce OCRisée n'est pas un signal fiable.
+	// Parents/Frères et sœurs/Sources/Grands-parents sont des listes plates, sans
+	// cette distinction à faire : chaque ligne y est simplement l'entrée suivante.
 	section := ""
 	var demiGroupe *DemiFratrieGroupe
 	var unionCourante *Union
@@ -191,14 +221,23 @@ func Parse(texte string) (*Fiche, error) {
 			}
 			continue
 		}
-		bullet := strings.HasPrefix(l, "- ")
-		contenu := strings.TrimPrefix(l, "- ")
+		contenu := stripBullet(l)
+		if contenu == "" {
+			continue
+		}
+		// Filet de sécurité : une puce "Label: texte" (Sources, ou tout bloc non
+		// reconnu comme en-tête — ex. "NOTES" trop dégradé par l'OCR pour matcher)
+		// qui a fui dans une liste plate de personnes ne doit jamais fabriquer un
+		// individu fantôme — un vrai nom Geneanet ne contient jamais ":".
+		if strings.Contains(contenu, ":") {
+			switch section {
+			case "parents", "fratrie", "gpPaternels", "gpMaternels":
+				continue
+			}
+		}
 
 		switch section {
 		case "parents":
-			if !bullet {
-				continue
-			}
 			p := parsePersonneLigne(contenu)
 			switch {
 			case f.Parents[0].Nom == "":
@@ -207,7 +246,7 @@ func Parse(texte string) (*Fiche, error) {
 				f.Parents[1] = p
 			}
 		case "union":
-			if bullet {
+			if reMariagePrefix.MatchString(contenu) {
 				u := parseUnionBullet(contenu)
 				f.Unions = append(f.Unions, u)
 				unionCourante = &f.Unions[len(f.Unions)-1]
@@ -215,30 +254,26 @@ func Parse(texte string) (*Fiche, error) {
 				unionCourante.Enfants = append(unionCourante.Enfants, parsePersonneLigne(contenu))
 			}
 		case "fratrie":
-			if bullet {
-				f.Fratrie = append(f.Fratrie, parsePersonneLigne(contenu))
-			}
+			f.Fratrie = append(f.Fratrie, parsePersonneLigne(contenu))
 		case "demifratrie":
 			switch {
-			case !bullet && reDuCoteDe.MatchString(l):
-				m := reDuCoteDe.FindStringSubmatch(l)
+			case reDuCoteDe.MatchString(contenu):
+				m := reDuCoteDe.FindStringSubmatch(contenu)
 				f.DemiFratrie = append(f.DemiFratrie, DemiFratrieGroupe{ParentCommun: parsePersonneLigne(m[1])})
 				demiGroupe = &f.DemiFratrie[len(f.DemiFratrie)-1]
-			case bullet && reAvecPrefix.MatchString(contenu):
+			case reAvecPrefix.MatchString(contenu):
 				if demiGroupe == nil {
 					continue
 				}
 				demiGroupe.Unions = append(demiGroupe.Unions, parseAvecBullet(contenu))
-			case !bullet && demiGroupe != nil && len(demiGroupe.Unions) > 0:
+			case demiGroupe != nil && len(demiGroupe.Unions) > 0:
 				u := &demiGroupe.Unions[len(demiGroupe.Unions)-1]
 				u.Enfants = append(u.Enfants, parsePersonneLigne(contenu))
 			}
 		case "sources":
-			if bullet {
-				f.Sources = append(f.Sources, parseSource(contenu))
-			}
+			f.Sources = append(f.Sources, parseSource(contenu))
 		case "gpPaternels", "gpMaternels":
-			if !bullet || gpGroupe == nil {
+			if gpGroupe == nil {
 				continue
 			}
 			p := parsePersonneGP(contenu)

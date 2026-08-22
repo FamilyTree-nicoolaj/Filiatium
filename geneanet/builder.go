@@ -153,12 +153,12 @@ func trouverExistant(g *gedcom.Gedcom, nomGedcom string, m mention) (string, boo
 	if patronyme == "" {
 		return "", false
 	}
-	prenom := gedcom.Normaliser(gedcom.PrenomDeNom(nomGedcom))
+	prenom := gedcom.PrenomDeNom(nomGedcom)
 	for _, ind := range g.Individus() {
 		if gedcom.Normaliser(ind.Patronyme()) != patronyme {
 			continue
 		}
-		if prenom != "" && gedcom.Normaliser(gedcom.PrenomDeNom(ind.Valeur("NAME"))) != prenom {
+		if prenom != "" && !prenomsCompatibles(prenom, gedcom.PrenomDeNom(ind.Valeur("NAME"))) {
 			continue
 		}
 		if m.okNaissance {
@@ -169,6 +169,26 @@ func trouverExistant(g *gedcom.Gedcom, nomGedcom string, m mention) (string, boo
 		return ind.Xref, true
 	}
 	return "", false
+}
+
+// prenomsCompatibles compare deux prénoms en tolérant, de CHAQUE côté, un premier mot
+// de bruit de glyphe ("Q Augustine" / "os François Joseph" / "9 Marie Françoise" /
+// "dj François Joseph" — le glyphe ♂/♀ OCRise en un jeton alphanumérique imprévisible
+// à chaque rencontre, jamais le même : la même personne peut ainsi porter "9 " sur
+// l'en-tête de sa propre fiche et "Q " en s'auto-listant dans sa fratrie). Un mot de
+// bruit de ce type fait toujours ≤2 lettres — un vrai prénom français n'en a jamais
+// d'aussi court en tête — d'où le seuil ; sans cette tolérance, deux mentions de la
+// même personne échouent à se retrouver et se dupliquent.
+func prenomsCompatibles(a, b string) bool {
+	return canonicaliserPrenom(a) == canonicaliserPrenom(b)
+}
+
+func canonicaliserPrenom(prenom string) string {
+	mots := strings.Fields(gedcom.Normaliser(prenom))
+	if len(mots) > 1 && len([]rune(mots[0])) <= 2 {
+		mots = mots[1:]
+	}
+	return strings.Join(mots, " ")
 }
 
 // Construire résout et câble toutes les fiches dans g : deux passes (voir resoudre),

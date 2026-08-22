@@ -3,6 +3,28 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.1] — 2026-08-22
+
+### Corrigé
+
+- `import` : le parseur de fiches Geneanet supposait une puce `"- "` fixe et un
+  intitulé de section OCRisé sans bruit — faux sur de l'OCR tesseract réel (bruit de
+  puce variable "+"/"°"/"="/"©"/"»"/"." selon la capture, intitulés parfois tronqués
+  au point de ne plus être reconnaissables, ex. "Sources" → "SOUS"). Corrigeait à
+  tort des fiches réelles : une puce "Sources" non reconnue laissait la section
+  précédente ouverte, et ses lignes ("Label: texte") étaient câblées comme de faux
+  enfants/conjoints. Refonte : la distinction "nouvelle entrée" vs "enfant imbriqué"
+  (Union(s), Demi-frères) se fait désormais par le CONTENU de la ligne, jamais par sa
+  puce ; les intitulés de section ne sont plus ancrés en fin de ligne ; un bloc
+  "NOTES" (jusqu'ici non reconnu) est maintenant reconnu et ignoré ; une puce
+  contenant ":" ne peut plus fabriquer un individu dans une liste plate de personnes
+  (Parents/Frères et sœurs/Grands-parents).
+- La déduplication inter-fiches échouait quand le glyphe ♂/♀ OCRisait différemment
+  selon la mention de la même personne (ex. "9 Marie Françoise TILMONT" sur sa
+  propre fiche vs "Q Marie Françoise TILMONT" en s'auto-listant dans sa fratrie) :
+  un mot de tête ≤2 lettres est maintenant toléré des deux côtés de la comparaison
+  de prénom (`geneanet.prenomsCompatibles`).
+
 ## [2.2.0] — 2026-08-22
 
 ### Ajouté
