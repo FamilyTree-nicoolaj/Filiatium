@@ -3,6 +3,15 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.3] — 2026-08-22
+
+### Corrigé
+
+- `import` : variantes supplémentaires du glyphe ♂/♀ OCRisé, confirmées par
+  l'utilisateur sur des artefacts résiduels ("dg' Charles BOUCHART", "9 Marie
+  Françoise TILMONT", "g' Jacques Philippe TILMONT") — "9" rejoint "Q" comme rendu
+  de ♀ ; "g'"/"dg'" rejoignent "d'" comme rendu de ♂.
+
 ## [2.2.2] — 2026-08-22
 
 ### Corrigé

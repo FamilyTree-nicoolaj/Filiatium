@@ -134,14 +134,14 @@ var (
 	reMarqueurSansDescendance = regexp.MustCompile(`✂\s*$`)
 
 	// tesseract OCRise le glyphe ♂/♀ de tête en un jeton alphanumérique, mais pas au
-	// hasard : confirmé sur données réelles, "Q" et "d'" (avec ou sans espace après
-	// l'apostrophe, "d'Henri" comme "d' Prudent") sont respectivement le rendu
-	// dominant de ♀ et ♂ pour cette combinaison police/résolution — donc traités ici
-	// comme des signaux de sexe à part entière, pas seulement du bruit à retirer.
-	// "os" (rendu observé pour un marqueur d'union, pas le sexe) est retiré comme
-	// bruit sans valeur de sexe assignée.
-	reGlypheF      = regexp.MustCompile(`(?i)^q\s+`)
-	reGlypheM      = regexp.MustCompile(`(?i)^d['’]\s*`)
+	// hasard : confirmé sur données réelles, "Q"/"9" et "d'"/"g'"/"dg'" (avec ou sans
+	// espace après l'apostrophe, "d'Henri" comme "d' Prudent") sont respectivement le
+	// rendu dominant de ♀ et ♂ pour cette combinaison police/résolution — donc
+	// traités ici comme des signaux de sexe à part entière, pas seulement du bruit à
+	// retirer. "os" (rendu observé pour un marqueur d'union, pas le sexe) est retiré
+	// comme bruit sans valeur de sexe assignée.
+	reGlypheF      = regexp.MustCompile(`(?i)^[q9]\s+`)
+	reGlypheM      = regexp.MustCompile(`(?i)^[dg]{1,2}['’]\s*`)
 	reGlypheNeutre = regexp.MustCompile(`(?i)^os\s+`)
 )
 
