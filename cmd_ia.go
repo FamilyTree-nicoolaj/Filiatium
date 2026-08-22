@@ -104,6 +104,7 @@ func afficherManifesteIA() {
 			`forcemerge fusionne directement deux GEDCOM vers un nouveau fichier dst.ged (jamais l'une des deux sources, qui restent intactes), à partir de paires d'individus "xrefA:xrefB" déclarées explicitement (mode miroir) — --fusionner règle jusqu'où l'appariement automatique complète ces ancres. Un conflit de valeur garde la valeur de srcA mais préserve celle de srcB en NOTE : rien n'est jamais perdu silencieusement.`,
 			`publish retire, vers un nouveau fichier dst.ged (jamais src.ged), les faits datés qu'une règle de réalisme (R1-R13) juge invraisemblables et qu'aucune citation SOUR n'étaye — --niveau règle la prudence : strict (impossibilités sans seuil, défaut), modere (+ coïncidences suspectes), large (+ règles à seuil réglable). Un fait sourcé n'est jamais supprimé.`,
 			`Les seuils de réalisme (check, catégorie realisme ; publish --niveau large) sont réglables via un fichier "filiatium.json" posé à côté du GEDCOM.`,
+			`import construit un GEDCOM neuf à partir de captures de fiches Geneanet (OCR interne via tesseract, jamais visible pour l'appelant) et écrit toujours vers un nouveau dst.ged — dédupliquant automatiquement les personnes qui se recoupent entre plusieurs fiches. La garde d'écriture y ignore la catégorie realisme (des signalements comme R13 sont attendus sur des données réelles, pas un défaut de la construction) mais bloque toujours sur structure/liens/doublons.`,
 		},
 	}
 
@@ -184,6 +185,13 @@ func commandeIAPour(c Commande) commandeIA {
 		ci.Positionnels = []positionnelIA{
 			{Nom: "src.ged", Description: "GEDCOM source, jamais modifié", Obligatoire: true},
 			{Nom: "dst.ged", Description: "fichier de sortie, avec les faits non sourcés jugés invraisemblables retirés", Obligatoire: true},
+		}
+	case "import":
+		flagsImport(fs)
+		ci.Usage = "filiatium import <dst.ged> <fiche1.png> [fiche2.png ...] [options]"
+		ci.Positionnels = []positionnelIA{
+			{Nom: "dst.ged", Description: "fichier de sortie — toujours nouveau, jamais un fichier déjà existant", Obligatoire: true},
+			{Nom: "fiche.png ...", Description: "une ou plusieurs captures de fiches Geneanet (ou fichiers texte avec --texte)", Obligatoire: true},
 		}
 	}
 

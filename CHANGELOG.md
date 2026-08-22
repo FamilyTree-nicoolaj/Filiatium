@@ -3,6 +3,37 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [Unreleased]
+
+### Ajouté
+
+- Nouvelle commande `import` : construit un GEDCOM complet à partir de captures
+  d'écran de fiches individuelles Geneanet (parents, union(s)/enfants, frères
+  et sœurs, demi-frères et demi-sœurs, profession, sources, grands-parents
+  paternels/maternels et leurs oncles/tantes), vers un nouveau fichier
+  `dst.ged`. Sur le bloc grands-parents, le parent du sujet est câblé comme
+  enfant du couple même quand Geneanet l'omet de la liste (déjà montré via
+  "Parents") ; `✂` (sans descendance connue) devient `1 NCHI 0` ; `⚭`/`⊖
+  (année)` (mariage sans détail) devient un `MARR`/`DATE`, sans dupliquer une
+  union déjà connue plus précisément ailleurs. L'OCR est fait en interne via
+  le binaire système
+  `tesseract` (`-l fra`, `--psm 6`) — jamais invoqué à la main ; `--texte` évite
+  cet appel quand les fichiers sont déjà du texte. Les personnes qui se
+  recoupent entre plusieurs fiches sont automatiquement dédupliquées par
+  patronyme et prénom normalisés et — quand elle est connue des deux côtés —
+  la **même** année de naissance (jamais une fenêtre de tolérance, pour ne pas
+  fusionner à tort deux germains homonymes nés à un an d'écart). `--auteur`
+  attribue une source Geneanet partagée à l'utilisatrice/au contributeur
+  source de la capture. Contrairement aux autres commandes d'écriture, la
+  garde avant/après ignore la catégorie réalisme (attendue et légitime sur un
+  arbre neuf comparé à un fichier vide) mais bloque toujours sur
+  structure/liens/doublons. Dépendance d'exécution nouvelle (hors Go) :
+  `tesseract` — voir `Formula/filiatium.rb` (`depends_on "tesseract"`,
+  `"tesseract-lang"` pour le français).
+- `gedcom.Nouveau()` : squelette `HEAD`/`TRLR` minimal en mémoire, pour bâtir
+  un arbre entièrement neuf sans fichier existant à charger — utilisé par
+  `import`.
+
 ## [2.1.0] — 2026-08-18
 
 ### Ajouté

@@ -267,6 +267,22 @@ func Load(chemin string) (*Gedcom, error) {
 	}, nil
 }
 
+// Nouveau crée un Gedcom vide en mémoire, prêt pour AddIndividual/AddFamily/Save —
+// squelette minimal HEAD/TRLR (voir rules.S5) pour bâtir un arbre entièrement neuf
+// (ex. import OCR Geneanet), sans fichier existant à charger.
+func Nouveau() *Gedcom {
+	head := nouveauRecord([]string{
+		"0 HEAD",
+		"1 SOUR FILIATIUM",
+		"1 GEDC",
+		"2 VERS 5.5.1",
+		"2 FORM LINEAGE-LINKED",
+		"1 CHAR UTF-8",
+	})
+	trlr := nouveauRecord([]string{"0 TRLR"})
+	return &Gedcom{Records: []*Record{head, trlr}}
+}
+
 // Save écrit le fichier — et refuse si quelqu'un d'autre a écrit entretemps.
 // Avant d'écraser Chemin (ou chemin, si fourni et différent), revérifie que le
 // contenu sur disque est encore celui lu par Load() : sinon renvoie
