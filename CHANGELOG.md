@@ -3,6 +3,21 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.2] — 2026-08-22
+
+### Corrigé
+
+- `import` : le glyphe ♂/♀ de tête OCRise en un jeton alphanumérique, mais pas au
+  hasard pour une combinaison police/résolution donnée — confirmé sur données
+  réelles, "Q" et "d'" (avec ou sans espace après l'apostrophe) sont respectivement
+  le rendu dominant de ♀ et ♂, désormais reconnus comme signal de sexe à part
+  entière (au lieu de rester attachés au prénom comme bruit). "os" (rendu observé
+  pour un marqueur d'union, pas le sexe) est retiré sans valeur de sexe assignée.
+- Le marqueur de décès seul "†<année>" OCRise parfois en "+<année>" (ex. "Charles
+  SOIL +1805") — non reconnu jusqu'ici, l'année entière était alors prise à tort
+  pour un patronyme ("Charles SOIL /+1805/"). "+" est maintenant toléré au même
+  titre que "†".
+
 ## [2.2.1] — 2026-08-22
 
 ### Corrigé

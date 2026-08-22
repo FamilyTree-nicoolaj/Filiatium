@@ -121,15 +121,28 @@ var (
 	// Le suffixe "-" (sans second millésime) marque une naissance connue sans décès
 	// enregistré ("1789-") — même sens qu'un millésime seul, juste une convention
 	// d'affichage différente ; "ca "/"vers " marque une date approximative, ignoré.
-	reAnneeDeuxRe      = regexp.MustCompile(`\s+(\d{4})-(\d{4})\s*$`)
-	reAnneeUneRe       = regexp.MustCompile(`(?i)\s+(?:ca\.?\s+|vers\s+)?(\d{4})-?\s*$`)
-	reAnneeDecesSeulRe = regexp.MustCompile(`\s+†\s*(\d{4})\s*$`)
+	reAnneeDeuxRe = regexp.MustCompile(`\s+(\d{4})-(\d{4})\s*$`)
+	reAnneeUneRe  = regexp.MustCompile(`(?i)\s+(?:ca\.?\s+|vers\s+)?(\d{4})-?\s*$`)
+	// "+" toléré en plus de "†" : tesseract OCRise le poignard de décès en un simple
+	// signe plus sur certaines captures (observé : "Charles SOIL +1805").
+	reAnneeDecesSeulRe = regexp.MustCompile(`\s+[†+]\s*(\d{4})\s*$`)
 
 	// Marqueurs du bloc "Grands-parents, oncles et tantes" : "⚭ (année)" (mariage du
 	// couple de grands-parents) ou "⊖ (année)" (mariage connu d'un oncle/une tante,
 	// conjoint non précisé), et "✂" (sans descendance connue).
 	reMarqueurMariage         = regexp.MustCompile(`(?i)[⚭⊖]\s*\((\d{4})\)\s*$`)
 	reMarqueurSansDescendance = regexp.MustCompile(`✂\s*$`)
+
+	// tesseract OCRise le glyphe ♂/♀ de tête en un jeton alphanumérique, mais pas au
+	// hasard : confirmé sur données réelles, "Q" et "d'" (avec ou sans espace après
+	// l'apostrophe, "d'Henri" comme "d' Prudent") sont respectivement le rendu
+	// dominant de ♀ et ♂ pour cette combinaison police/résolution — donc traités ici
+	// comme des signaux de sexe à part entière, pas seulement du bruit à retirer.
+	// "os" (rendu observé pour un marqueur d'union, pas le sexe) est retiré comme
+	// bruit sans valeur de sexe assignée.
+	reGlypheF      = regexp.MustCompile(`(?i)^q\s+`)
+	reGlypheM      = regexp.MustCompile(`(?i)^d['’]\s*`)
+	reGlypheNeutre = regexp.MustCompile(`(?i)^os\s+`)
 )
 
 // stripBullet retire le bruit de puce en tête de ligne (voir reBulletNoise).
@@ -411,6 +424,12 @@ func peelGlyph(s string) (reste, sexe string) {
 		return strings.TrimSpace(strings.TrimPrefix(s, "♂")), "M"
 	case strings.HasPrefix(s, "♀"):
 		return strings.TrimSpace(strings.TrimPrefix(s, "♀")), "F"
+	case reGlypheF.MatchString(s):
+		return strings.TrimSpace(reGlypheF.ReplaceAllString(s, "")), "F"
+	case reGlypheM.MatchString(s):
+		return strings.TrimSpace(reGlypheM.ReplaceAllString(s, "")), "M"
+	case reGlypheNeutre.MatchString(s):
+		return strings.TrimSpace(reGlypheNeutre.ReplaceAllString(s, "")), ""
 	}
 	return s, ""
 }
