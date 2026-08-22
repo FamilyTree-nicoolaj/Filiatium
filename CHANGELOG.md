@@ -3,6 +3,21 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.7] — 2026-08-22
+
+### Corrigé
+
+- `import` : "ca "/"vers " devant une tranche de deux années ("Jean Rouquier ca
+  1680-1755") n'était toléré que devant une année seule — la tranche retirée, "ca"
+  restait collé au nom ("Jean Rouquier /ca/"), faisant échouer la déduplication de
+  cette personne avec sa propre fiche.
+- `import` : "+"/"†" en fin de mention de conjoint sans millésime derrière (bruit
+  OCR avant "dont", ex. "avec Jeanne Lourey + dont", plutôt qu'un vrai marqueur de
+  décès daté) restait comme dernier mot du nom ("Jeanne Lourey /t/" ou similaire),
+  même effet de déduplication ratée. Les deux confirmés sur le même import
+  "sarraute75" (Jean Rouquier × Jeanne Lourey) : 105→102 individus, 14→12 familles
+  sur ce corpus, un des deux doublons D1 disparaît entièrement.
+
 ## [2.2.6] — 2026-08-22
 
 ### Ajouté

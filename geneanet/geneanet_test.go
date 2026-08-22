@@ -284,6 +284,37 @@ func TestConstruireGrandParentInconnu(t *testing.T) {
 	}
 }
 
+// TestParsePersonneLigneBruitConjoint couvre deux artefacts réels (import
+// "sarraute75", fiches Jean Rouquier/Jeanne Lourey) qui faisaient échouer la
+// déduplication d'une personne avec sa propre fiche : le nom capté en conjoint
+// portait alors un mot de bruit en trop comme dernier mot, pris pour son patronyme
+// par nomGedcom (ex. "Jean Rouquier /ca/" au lieu de "Jean /Rouquier/").
+func TestParsePersonneLigneBruitConjoint(t *testing.T) {
+	cas := []struct {
+		ligne                string
+		nom                  string
+		naissance, deces     int
+		okNaissance, okDeces bool
+	}{
+		// "ca " devant un couple d'années n'était toléré que devant une année seule
+		// (reAnneeUneRe) : "avec Jean Rouquier ca 1680-1755 dont" laissait "ca" collé
+		// au nom une fois la tranche d'années retirée.
+		{"Jean Rouquier ca 1680-1755", "Jean Rouquier", 1680, 1755, true, true},
+		{"Jean Rouquier vers 1680-1755", "Jean Rouquier", 1680, 1755, true, true},
+		// "avec Jeanne Lourey + dont" : le "+" OCRisé sans millésime derrière (bruit,
+		// pas un marqueur de décès daté) restait comme dernier mot du nom.
+		{"Jeanne Lourey +", "Jeanne Lourey", 0, 0, false, false},
+	}
+	for _, c := range cas {
+		p := parsePersonneLigne(c.ligne)
+		if p.Nom != c.nom || p.Naissance != c.naissance || p.Deces != c.deces ||
+			p.OkNaissance != c.okNaissance || p.OkDeces != c.okDeces {
+			t.Errorf("parsePersonneLigne(%q) = %+v, voulu nom=%q naissance=%d(%v) deces=%d(%v)",
+				c.ligne, p, c.nom, c.naissance, c.okNaissance, c.deces, c.okDeces)
+		}
+	}
+}
+
 func TestConstruireFichesReelles(t *testing.T) {
 	fA, err := Parse(ficheVictoire)
 	if err != nil {

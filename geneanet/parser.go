@@ -121,11 +121,18 @@ var (
 	// Le suffixe "-" (sans second millésime) marque une naissance connue sans décès
 	// enregistré ("1789-") — même sens qu'un millésime seul, juste une convention
 	// d'affichage différente ; "ca "/"vers " marque une date approximative, ignoré.
-	reAnneeDeuxRe = regexp.MustCompile(`\s+(\d{4})-(\d{4})\s*$`)
+	reAnneeDeuxRe = regexp.MustCompile(`(?i)\s+(?:ca\.?\s+|vers\s+)?(\d{4})-(\d{4})\s*$`)
 	reAnneeUneRe  = regexp.MustCompile(`(?i)\s+(?:ca\.?\s+|vers\s+)?(\d{4})-?\s*$`)
 	// "+" toléré en plus de "†" : tesseract OCRise le poignard de décès en un simple
 	// signe plus sur certaines captures (observé : "Charles SOIL +1805").
 	reAnneeDecesSeulRe = regexp.MustCompile(`\s+[†+]\s*(\d{4})\s*$`)
+	// "+"/"†" en fin de ligne SANS millésime (Geneanet : décès connu, date inconnue —
+	// ou, confirmé sur données réelles, bruit OCR résiduel avant "dont" dans une
+	// mention de conjoint, ex. "avec Jeanne Lourey + dont") : retiré comme bruit plutôt
+	// que gardé comme dernier mot du nom, ce qui ferait échouer la déduplication de
+	// cette personne avec sa propre fiche (patronyme "+"/OCRisé, ex. "Jeanne Lourey /t/"
+	// au lieu de "Jeanne /Lourey/"). Le décès reste simplement non daté (OkDeces=false).
+	reMarqueurDecesSansAnnee = regexp.MustCompile(`\s+[†+]\s*$`)
 
 	// Marqueurs du bloc "Grands-parents, oncles et tantes" : "⚭ (année)" (mariage du
 	// couple de grands-parents) ou "⊖ (année)" (mariage connu d'un oncle/une tante,
@@ -472,6 +479,7 @@ func nomEtAnnees(ligne string) (nom string, naissance, deces int, okNaissance, o
 		okNaissance = true
 		return strings.TrimSpace(ligne[:m[0]]), naissance, deces, okNaissance, okDeces
 	}
+	ligne = strings.TrimSpace(reMarqueurDecesSansAnnee.ReplaceAllString(ligne, ""))
 	return ligne, naissance, deces, okNaissance, okDeces
 }
 
