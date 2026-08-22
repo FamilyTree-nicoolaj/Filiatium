@@ -3,6 +3,19 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.5] — 2026-08-22
+
+### Corrigé
+
+- `import` : une fiche avec un seul grand-parent connu dans un groupe "Grands-parents,
+  oncles et tantes" (l'autre absent de Geneanet) faisait échouer tout l'import
+  ("mention sans nom") — `GrandPere`/`GrandMere` n'étaient pas résolus de façon
+  conditionnelle comme `Parents`/`parentDuSujet` le sont déjà. Confirmé sur une fiche
+  réelle (Pierre Marquet, import `sarraute75`).
+- `import` : nouvelles variantes du glyphe ♂/♀ OCRisé, confirmées sur le même import —
+  "s Jean Rouquier"/"g Jean Aurilhac" (♂ rendu en lettre nue suivie d'un espace,
+  sans apostrophe) et "£ Marianne Bertoue" (♀ rendu en signe livre).
+
 ## [2.2.4] — 2026-08-22
 
 ### Corrigé

@@ -260,6 +260,30 @@ func TestConstruireFicheMarquet(t *testing.T) {
 	}
 }
 
+// TestConstruireGrandParentInconnu couvre le cas (réel, cf. import "sarraute75" sur
+// une fiche Pierre Marquet) où un seul des deux grands-parents d'un groupe est
+// nommé — Geneanet l'affiche ainsi quand l'autre est inconnu. cablerGroupeGrandsParents
+// résolvait autrefois GrandPere/GrandMere sans vérifier leur Nom, contrairement à
+// Parents (cablerParentsEtFratrie) et parentDuSujet : "mention sans nom" faisait
+// échouer tout l'import.
+func TestConstruireGrandParentInconnu(t *testing.T) {
+	f := &Fiche{
+		Sujet: Personne{Nom: "Pierre Marquet", Sexe: "M"},
+		GrandsParentsPaternels: &GrandParentGroupe{
+			GrandPere: Personne{Nom: "Maurice Marquet"},
+			// GrandMere inconnue (Nom == "") — ne doit pas faire échouer Construire.
+		},
+	}
+	g := gedcom.Nouveau()
+	if _, err := Construire(g, []*Fiche{f}, ""); err != nil {
+		t.Fatal(err)
+	}
+	gp := add.ChercherHomonymes(g, add.Requete{Nom: "Maurice /Marquet/"})
+	if len(gp) != 1 {
+		t.Fatalf("grand-père paternel : %d trouvé(s), attendu 1", len(gp))
+	}
+}
+
 func TestConstruireFichesReelles(t *testing.T) {
 	fA, err := Parse(ficheVictoire)
 	if err != nil {

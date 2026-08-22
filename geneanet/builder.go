@@ -378,16 +378,20 @@ func cablerGrandsParents(g *gedcom.Gedcom, f *Fiche, sourceGeneanet string) erro
 // mais il EST bien un enfant de ce couple — même logique que le sujet toujours câblé
 // sur sa propre FAM parentale, qu'il soit ou non relisté dans la Fratrie.
 func cablerGroupeGrandsParents(g *gedcom.Gedcom, grp *GrandParentGroupe, parentDuSujet Personne, sourceGeneanet string) error {
-	gpXref, err := resoudre(g, mentionDePersonne(grp.GrandPere))
-	if err != nil {
-		return err
+	var gpXref, gmXref string
+	var err error
+	if grp.GrandPere.Nom != "" {
+		if gpXref, err = resoudre(g, mentionDePersonne(grp.GrandPere)); err != nil {
+			return err
+		}
+		citerSiExiste(g, gpXref, sourceGeneanet)
 	}
-	citerSiExiste(g, gpXref, sourceGeneanet)
-	gmXref, err := resoudre(g, mentionDePersonne(grp.GrandMere))
-	if err != nil {
-		return err
+	if grp.GrandMere.Nom != "" {
+		if gmXref, err = resoudre(g, mentionDePersonne(grp.GrandMere)); err != nil {
+			return err
+		}
+		citerSiExiste(g, gmXref, sourceGeneanet)
 	}
-	citerSiExiste(g, gmXref, sourceGeneanet)
 
 	fam, err := trouverOuCreerFamille(g, gpXref, gmXref)
 	if err != nil {
