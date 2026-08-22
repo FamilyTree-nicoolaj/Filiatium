@@ -304,6 +304,9 @@ func TestParsePersonneLigneBruitConjoint(t *testing.T) {
 		// "avec Jeanne Lourey + dont" : le "+" OCRisé sans millésime derrière (bruit,
 		// pas un marqueur de décès daté) restait comme dernier mot du nom.
 		{"Jeanne Lourey +", "Jeanne Lourey", 0, 0, false, false},
+		// "+ Jeanne Lourey t" (section Parents, même import) : le même poignard "†"
+		// rendu cette fois en la lettre "t" (visuellement proche) plutôt qu'en "+".
+		{"Jeanne Lourey t", "Jeanne Lourey", 0, 0, false, false},
 	}
 	for _, c := range cas {
 		p := parsePersonneLigne(c.ligne)

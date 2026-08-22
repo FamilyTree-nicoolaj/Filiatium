@@ -100,14 +100,33 @@ var (
 	reHeadGPMaternels = regexp.MustCompile(`(?i)^grands?[\s-]*parents?\s+maternels`)
 	reHeadNotes       = regexp.MustCompile(`(?i)^notes?\b`)
 
+	// reHeadBarre reconnaît la même réglette décorative (voir commentaire ci-dessus)
+	// mais SANS exiger de reconnaître le mot d'intitulé lui-même : confirmé sur
+	// données réelles, "NOTES" ressort parfois trop dégradé pour matcher reHeadNotes
+	// ("NTeS", "NT..." — la réglette elle-même se réduisant alors aux 3 points de
+	// l'ellipse) — la ligne entière passait alors inaperçue comme intitulé et le
+	// texte libre qui suit (notes individuelles, notes d'union) continuait d'être lu
+	// comme des entrées de la section précédente (ex. Frères et sœurs), fabriquant
+	// des individus fantômes ("Naissance", "Décès", des phrases entières de
+	// témoins/parrain-marraine). Un intitulé quelconque, non reconnu par les motifs
+	// ci-dessus, ferme quand même la section courante : mieux vaut ignorer ce texte
+	// que le rattacher à tort à la section précédente. Un seul mot court en tête
+	// (≤15 caractères, sans espace) plutôt que la ligne entière : une vraie phrase de
+	// notes se termine parfois aussi par "..." ou une suite de points, mais jamais
+	// juste après un mot isolé.
+	reHeadBarre = regexp.MustCompile(`(?i)^\S{1,15}\s*[-—_.|]{3,}\s*$`)
+
 	// reBulletNoise retire la puce de tête d'une ligne de contenu — jamais un
 	// caractère fixe : un même niveau de liste Geneanet OCRise en "+", "-", "°",
-	// "=", "©", """, "»", "." ou toute combinaison de ceux-ci selon la capture (voir
-	// stripBullet). Le glyphe ♂/♀ lui-même OCRise en bruit alphanumérique
-	// imprévisible ("Q", "os", "9", "d'", "dj"...) qu'aucune regex fixe ne peut
-	// isoler sans risquer de manger un vrai prénom court — non traité (voir
-	// peelGlyph : signal secondaire, jamais requis).
-	reBulletNoise = regexp.MustCompile(`^[-+=°©»§<>._·•○●▪"'’‘“”\s]+`)
+	// "=", "©", """, "»", ".", un "o" minuscule isolé (confirmé sur données réelles,
+	// devant un glyphe ♂/♀ lui-même OCRisé : "o g' Antoine Marquet 1825"), ou toute
+	// combinaison de ceux-ci selon la capture (voir stripBullet). "o" minuscule
+	// seulement — jamais "O" majuscule, qui ouvrirait un vrai prénom (ex. "Odile").
+	// Le glyphe ♂/♀ lui-même OCRise en bruit alphanumérique imprévisible ("Q", "os",
+	// "9", "d'", "dj"...) qu'aucune regex fixe ne peut isoler sans risquer de manger
+	// un vrai prénom court — non traité ici (voir peelGlyph : signal secondaire,
+	// jamais requis, appliqué séparément après stripBullet).
+	reBulletNoise = regexp.MustCompile(`^[-+=°©»§<>._·•○●▪"'’‘“”o\s]+`)
 
 	reNaissDeces = regexp.MustCompile(`(?i)^(\S+)\s+le\s+(.+?)\s*\((.+?)\)\s*-\s*(.+)$`)
 	reAgeSuffix  = regexp.MustCompile(`(?i),?\s*[aà]\s*l['’]?\s*[aâ]ge.*$`)
@@ -130,9 +149,13 @@ var (
 	// ou, confirmé sur données réelles, bruit OCR résiduel avant "dont" dans une
 	// mention de conjoint, ex. "avec Jeanne Lourey + dont") : retiré comme bruit plutôt
 	// que gardé comme dernier mot du nom, ce qui ferait échouer la déduplication de
-	// cette personne avec sa propre fiche (patronyme "+"/OCRisé, ex. "Jeanne Lourey /t/"
-	// au lieu de "Jeanne /Lourey/"). Le décès reste simplement non daté (OkDeces=false).
-	reMarqueurDecesSansAnnee = regexp.MustCompile(`\s+[†+]\s*$`)
+	// cette personne avec sa propre fiche (patronyme OCRisé au lieu du vrai). Le
+	// décès reste simplement non daté (OkDeces=false). "t" minuscule isolé toléré en
+	// plus : même poignard "†" rendu, sur une autre capture du même import, en la
+	// LETTRE "t" plutôt qu'en "+" (visuellement proche) — confirmé sur "+ Jeanne
+	// Lourey t" (section Parents), qui donnait "Jeanne Lourey /t/" au lieu de
+	// "Jeanne /Lourey/" avant ce correctif.
+	reMarqueurDecesSansAnnee = regexp.MustCompile(`\s+[†+]\s*$|\s+t\s*$`)
 
 	// Marqueurs du bloc "Grands-parents, oncles et tantes" : "⚭ (année)" (mariage du
 	// couple de grands-parents) ou "⊖ (année)" (mariage connu d'un oncle/une tante,
@@ -178,6 +201,8 @@ func entete(l string) string {
 		return "gpMaternels"
 	case reHeadNotes.MatchString(l):
 		return "notes"
+	case reHeadBarre.MatchString(l):
+		return "inconnu"
 	}
 	return ""
 }
@@ -246,11 +271,18 @@ func Parse(texte string) (*Fiche, error) {
 		if contenu == "" {
 			continue
 		}
-		// Filet de sécurité : une puce "Label: texte" (Sources, ou tout bloc non
-		// reconnu comme en-tête — ex. "NOTES" trop dégradé par l'OCR pour matcher)
+		// Filet de sécurité : une puce "Label: texte" (Sources), ou une ligne qui n'a
+		// AUCUN marqueur de tête — ni puce (reBulletNoise), ni glyphe ♂/♀ (peelGlyph)
+		// — signe de texte libre plutôt que d'une entrée de liste (Notes
+		// individuelles/d'union sous un intitulé "NOTES" trop dégradé par l'OCR pour
+		// matcher entete, ex. "NTSS", "NT..." sans même la réglette de reHeadBarre)
 		// qui a fui dans une liste plate de personnes ne doit jamais fabriquer un
-		// individu fantôme — un vrai nom Geneanet ne contient jamais ":".
-		if strings.Contains(contenu, ":") {
+		// individu fantôme : un vrai nom Geneanet ne contient jamais ":", et une
+		// vraie entrée de liste porte toujours l'un des deux (une entrée peut n'avoir
+		// QUE le glyphe, sans puce séparée — voir ficheVictoire/ficheFrancois).
+		resteGlyphe, _ := peelGlyph(contenu)
+		sansPuce := contenu == l && resteGlyphe == contenu
+		if strings.Contains(contenu, ":") || sansPuce {
 			switch section {
 			case "parents", "fratrie", "gpPaternels", "gpMaternels":
 				continue
@@ -271,7 +303,7 @@ func Parse(texte string) (*Fiche, error) {
 				u := parseUnionBullet(contenu)
 				f.Unions = append(f.Unions, u)
 				unionCourante = &f.Unions[len(f.Unions)-1]
-			} else if unionCourante != nil {
+			} else if unionCourante != nil && !sansPuce {
 				unionCourante.Enfants = append(unionCourante.Enfants, parsePersonneLigne(contenu))
 			}
 		case "fratrie":
@@ -287,7 +319,7 @@ func Parse(texte string) (*Fiche, error) {
 					continue
 				}
 				demiGroupe.Unions = append(demiGroupe.Unions, parseAvecBullet(contenu))
-			case demiGroupe != nil && len(demiGroupe.Unions) > 0:
+			case demiGroupe != nil && len(demiGroupe.Unions) > 0 && !sansPuce:
 				u := &demiGroupe.Unions[len(demiGroupe.Unions)-1]
 				u.Enfants = append(u.Enfants, parsePersonneLigne(contenu))
 			}

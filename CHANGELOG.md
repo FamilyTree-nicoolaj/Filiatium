@@ -3,6 +3,30 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.8] — 2026-08-22
+
+### Corrigé
+
+- `import` : un intitulé de section ("NOTES", "Parents"...) trop dégradé par l'OCR
+  pour matcher son motif (ex. "NTeS", "NT...", "Bart") passait inaperçu — le texte
+  libre qui suit (notes individuelles, notes d'union : témoins, parrain/marraine)
+  continuait d'être lu comme des entrées de la section précédente (Frères et
+  sœurs, Grands-parents), fabriquant des individus fantômes ("Naissance", "Décès",
+  des phrases entières). Deux garde-fous ajoutés : toute ligne se terminant par la
+  réglette décorative qui suit un intitulé Geneanet (même le mot lui-même
+  illisible) ferme la section courante plutôt que de laisser le texte lui être
+  rattaché ; une ligne de liste sans aucun marqueur de tête (ni puce, ni glyphe
+  ♂/♀) est ignorée plutôt que transformée en individu.
+- `import` : une puce "o" isolée (devant un glyphe ♂/♀ lui-même OCRisé, ex. "o g'
+  Antoine Marquet 1825") n'était pas reconnue comme puce — restait comme premier
+  mot du prénom.
+- `import` : "†" (marqueur de décès sans millésime) rendu par endroits en la
+  lettre "t" plutôt qu'en "+" (déjà toléré) — même effet : restait comme dernier
+  mot du nom, cassant sa déduplication avec sa propre fiche.
+  Les quatre confirmés sur le même import réel "sarraute75" : 102→76 individus,
+  12→12 familles, et `--force D1` suffit maintenant à écrire ce corpus sans aucun
+  signalement bloquant restant (contre 2 doublons irréductibles auparavant).
+
 ## [2.2.7] — 2026-08-22
 
 ### Corrigé
