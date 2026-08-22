@@ -3,6 +3,20 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/), versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [2.2.6] — 2026-08-22
+
+### Ajouté
+
+- `import --force D1` : fusionne automatiquement chaque paire de FAM signalée par D1
+  (conjoint commun et enfant(s) commun(s), donc probablement la même union décrite sur
+  deux fiches) avant d'écrire — la famille conservée récupère le HUSB/WIFE/CHIL et tout
+  autre fait (MARR, NOTE, SOUR...) que l'autre connaissait en plus, rien n'est perdu.
+  Refuse (et laisse la paire bloquer `--write` comme sans `--force`) quand HUSB ou WIFE
+  est connu des deux côtés mais différent — pas un doublon mécanique, mais très
+  probablement deux fiches ayant chacune créé un individu distinct pour la même
+  personne (déduplication d'individus manquée) : un jugement humain reste nécessaire.
+  Nouvelle primitive `gedcom.FusionnerFamilles`, réutilisable hors de `import`.
+
 ## [2.2.5] — 2026-08-22
 
 ### Corrigé

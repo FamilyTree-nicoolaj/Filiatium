@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/FamilyTree-nicoolaj/filiatium/config"
 	"github.com/FamilyTree-nicoolaj/filiatium/gedcom"
@@ -38,6 +39,11 @@ Options :
   --auteur    utilisatrice/contributrice Geneanet source de la capture (ex.
               "Sylvie DUJARDIN (sylvied58)"), attribuée à la source Geneanet créée
               pour cet import
+  --force     "D1" : fusionne automatiquement chaque paire de FAM signalée par D1
+              (conjoint commun et enfant(s) commun(s), donc probablement la même union
+              décrite sur deux fiches) avant d'écrire — la famille conservée récupère
+              le HUSB/WIFE/CHIL et tout autre fait (MARR, NOTE, SOUR...) que l'autre
+              connaissait en plus ; rien n'est perdu
   --write     écrire dst.ged (sinon simulation : rapport seul)
   --json      rapport en JSON plutôt qu'en texte
 
@@ -56,12 +62,59 @@ func init() {
 
 // flagsImport enregistre les options de `import` sur fs — voir flagsCheck
 // (cmd_check.go) pour pourquoi ceci est factorisé à part.
-func flagsImport(fs *flag.FlagSet) (texte *bool, auteur *string, ecrire, sortieJSON *bool) {
+func flagsImport(fs *flag.FlagSet) (texte *bool, auteur, force *string, ecrire, sortieJSON *bool) {
 	texte = fs.Bool("texte", false, "fichiers déjà en texte — pas d'appel à tesseract")
 	auteur = fs.String("auteur", "", `utilisatrice/contributrice Geneanet source de la capture, ex. "Sylvie DUJARDIN (sylvied58)"`)
+	force = fs.String("force", "", `"D1" : fusionne automatiquement les paires de FAM signalées par D1`)
 	ecrire = fs.Bool("write", false, "écrire dst.ged (sinon simulation)")
 	sortieJSON = fs.Bool("json", false, "rapport en JSON plutôt qu'en texte")
 	return
+}
+
+// reglesForcables sont les règles que --force sait effectivement appliquer —
+// uniquement D1 (fusion de FAM quasi-doublons) pour l'instant : aucune autre règle du
+// registre n'a une correction "fusionner deux enregistrements" qui ait un sens.
+var reglesForcables = map[string]bool{"D1": true}
+
+// parseForce décode l'option --force ("" ou une liste séparée par des virgules, ex.
+// "D1") et refuse toute règle que reglesForcables ne sait pas appliquer.
+func parseForce(s string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if s == "" {
+		return out, nil
+	}
+	for _, regle := range strings.Split(s, ",") {
+		regle = strings.TrimSpace(regle)
+		if !reglesForcables[regle] {
+			return nil, fmt.Errorf("--force ne sait appliquer que %s (reçu %q)", "D1", regle)
+		}
+		out[regle] = true
+	}
+	return out, nil
+}
+
+// fusionnerD1 fusionne chaque paire de FAM signalée par D1 (voir rules.D1 et
+// gedcom.FusionnerFamilles) : Xrefs[0]/[1] sont toujours les deux FAM de la paire (voir
+// rules/doublons.go). Une paire dont l'un des deux xref a déjà disparu (fusionné comme
+// second membre d'une paire précédente dans ce même passage) est ignorée plutôt que de
+// tenter une fusion sur un xref déjà supprimé. Une paire que FusionnerFamilles refuse
+// (HUSB/WIFE connu des deux côtés mais différent — pas un doublon mécanique) est aussi
+// ignorée plutôt que d'interrompre les autres : elle réapparaîtra en D1 dans le rapport
+// "après", donc --write restera bloqué dessus comme sans --force, ignores explique
+// pourquoi au lieu de laisser deviner.
+func fusionnerD1(g *gedcom.Gedcom, seuils config.Seuils) (fusionnees int, ignorees []string) {
+	for _, f := range rules.D1(g, seuils) {
+		x1, x2 := f.Xrefs[0], f.Xrefs[1]
+		if !g.Contains(x1) || !g.Contains(x2) {
+			continue
+		}
+		if err := g.FusionnerFamilles(x1, x2); err != nil {
+			ignorees = append(ignorees, err.Error())
+			continue
+		}
+		fusionnees++
+	}
+	return fusionnees, ignorees
 }
 
 func cmdImport(argv []string) int {
@@ -69,8 +122,14 @@ func cmdImport(argv []string) int {
 		return 0
 	}
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	texte, auteur, ecrire, sortieJSON := flagsImport(fs)
+	texte, auteur, force, ecrire, sortieJSON := flagsImport(fs)
 	fs.Parse(argvPourFlagSet(fs, argv))
+
+	forcees, err := parseForce(*force)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "erreur :", err)
+		return 2
+	}
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage : filiatium import <dst.ged> <fiche1.png> [fiche2.png ...] [options]")
@@ -120,6 +179,12 @@ func cmdImport(argv []string) int {
 		return 2
 	}
 
+	nFusionsD1 := 0
+	var ignoreesD1 []string
+	if forcees["D1"] {
+		nFusionsD1, ignoreesD1 = fusionnerD1(g, seuils)
+	}
+
 	apres := executerRegles(g, rules.Registre, seuils)
 	// La garde d'écriture compare ici à un arbre vide (gedcom.Nouveau) plutôt qu'à un
 	// arbre existant : un signalement de réalisme (ex. R13, "aucun décès enregistré")
@@ -131,9 +196,9 @@ func cmdImport(argv []string) int {
 	nouveaux := signalementsNouveaux(sansRealisme(avant), sansRealisme(apres))
 
 	if *sortieJSON {
-		afficherImportJSON(cheminDst, sources, rapport, apres, *ecrire && len(nouveaux) == 0)
+		afficherImportJSON(cheminDst, sources, rapport, apres, nFusionsD1, ignoreesD1, *ecrire && len(nouveaux) == 0)
 	} else {
-		afficherImportTexte(cheminDst, sources, rapport, apres)
+		afficherImportTexte(cheminDst, sources, rapport, apres, nFusionsD1, ignoreesD1)
 	}
 
 	if len(nouveaux) > 0 {
@@ -191,11 +256,17 @@ func lireOuOCR(chemin string, texte bool) (string, error) {
 	return geneanet.OCR(chemin)
 }
 
-func afficherImportTexte(cheminDst string, sources []string, rapport *geneanet.Rapport, apres map[string][]rules.Finding) {
+func afficherImportTexte(cheminDst string, sources []string, rapport *geneanet.Rapport, apres map[string][]rules.Finding, nFusionsD1 int, ignoreesD1 []string) {
 	fmt.Printf("dst     : %s\nfiches  : %d\n\n", cheminDst, len(sources))
 	fmt.Printf("individus créés : %d\nfamilles créées  : %d\nsources créées   : %d\n", rapport.Individus, rapport.Familles, rapport.Sources)
 	for _, a := range rapport.Ambigus {
 		fmt.Println("  ⚠", a)
+	}
+	if nFusionsD1 > 0 {
+		fmt.Printf("fusions D1 forcées : %d\n", nFusionsD1)
+	}
+	for _, ign := range ignoreesD1 {
+		fmt.Println("  ⚠ D1 non fusionnée :", ign)
 	}
 	total := 0
 	for _, findings := range apres {
@@ -204,10 +275,11 @@ func afficherImportTexte(cheminDst string, sources []string, rapport *geneanet.R
 	fmt.Printf("\nfiltre \"check\" après construction : %d signalement(s)\n", total)
 }
 
-func afficherImportJSON(cheminDst string, sources []string, rapport *geneanet.Rapport, apres map[string][]rules.Finding, ecrit bool) {
+func afficherImportJSON(cheminDst string, sources []string, rapport *geneanet.Rapport, apres map[string][]rules.Finding, nFusionsD1 int, ignoreesD1 []string, ecrit bool) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(map[string]any{
-		"dst": cheminDst, "fiches": sources, "rapport": rapport, "check_apres": apres, "ecrit": ecrit,
+		"dst": cheminDst, "fiches": sources, "rapport": rapport, "check_apres": apres,
+		"fusions_d1_forcees": nFusionsD1, "d1_non_fusionnees": ignoreesD1, "ecrit": ecrit,
 	})
 }
